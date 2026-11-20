@@ -1,5 +1,7 @@
 # gpu-backtester
 
+[![ci](https://github.com/Aurikology/gpu-backtester/actions/workflows/ci.yml/badge.svg)](https://github.com/Aurikology/gpu-backtester/actions/workflows/ci.yml)
+
 A GPU backtesting engine for intraday Nasdaq-100 futures (NQ) strategies, written in
 C++20 and **HIP**, AMD's GPU programming model. The same source compiles for AMD GPUs
 (ROCm) and NVIDIA GPUs (HIP's CUDA backend); the numbers below are from an NVIDIA
