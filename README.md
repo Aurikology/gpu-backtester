@@ -129,8 +129,10 @@ whose checksum differs from the CPU reference**, then keeps the fastest survivor
 | `gpu-naive` | 64 | 93M |
 | `gpu` | **128** | **821M** (45x the 16-thread CPU on this subset) |
 
-The default was 256; the tuner found 128 is ~25% faster, so 128 is now the default
-(`results/tune.json`). The design idea is the important part: anything, a script or an AI
+The default was 256; on 16,384 variants the tuner found 128 is ~25% faster, so 128 is
+now the default (`results/tune.json`). The winner depends on problem size: on a 4,096-variant
+run 256 edged ahead, because with fewer blocks in flight, larger blocks hide latency better.
+Re-run the tuner for your workload and GPU. The design idea is the important part: anything, a script or an AI
 agent, can propose a change, and the test oracle decides whether it counts.
 
 ## 6. GPU primitives from scratch: reduce and scan
@@ -277,3 +279,5 @@ docs/         TALKING-POINTS.md
   Monte Carlo (`--cost`).
 - **CI runs without a GPU.** Hosted runners have none, so GPU tests skip there and run
   locally.
+
+MIT licensed.
