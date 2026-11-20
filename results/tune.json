@@ -1,0 +1,102 @@
+{
+  "reference": {
+    "backend": "cpu",
+    "block": 256,
+    "seconds": 1.819681,
+    "sims_per_s": 18124600.0,
+    "checksum": "3c0a9122f7c91f95"
+  },
+  "candidates": [
+    {
+      "kernel": "gpu-naive",
+      "block": 32,
+      "seconds": 0.450021,
+      "sims_per_s": 73287700.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu-naive",
+      "block": 64,
+      "seconds": 0.354439,
+      "sims_per_s": 93051400.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu-naive",
+      "block": 128,
+      "seconds": 0.365485,
+      "sims_per_s": 90239000.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu-naive",
+      "block": 256,
+      "seconds": 0.39205,
+      "sims_per_s": 84124400.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu-naive",
+      "block": 512,
+      "seconds": 0.484568,
+      "sims_per_s": 68062600.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu-naive",
+      "block": 1024,
+      "seconds": 0.589077,
+      "sims_per_s": 55987600.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu",
+      "block": 32,
+      "seconds": 0.077945,
+      "sims_per_s": 423131000.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu",
+      "block": 64,
+      "seconds": 0.05626,
+      "sims_per_s": 586220000.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu",
+      "block": 128,
+      "seconds": 0.040195,
+      "sims_per_s": 820519000.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu",
+      "block": 256,
+      "seconds": 0.050611,
+      "sims_per_s": 651660000.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu",
+      "block": 512,
+      "seconds": 0.045784,
+      "sims_per_s": 720357000.0,
+      "correct": true
+    },
+    {
+      "kernel": "gpu",
+      "block": 1024,
+      "seconds": 0.069078,
+      "sims_per_s": 477444000.0,
+      "correct": true
+    }
+  ],
+  "best": {
+    "kernel": "gpu",
+    "block": 128,
+    "seconds": 0.040195,
+    "sims_per_s": 820519000.0,
+    "correct": true
+  }
+}

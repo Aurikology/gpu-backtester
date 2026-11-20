@@ -1,0 +1,24 @@
+2013 sessions (2019-01-02 to 2026-11-12), 855360 variants, backend gpu
+in-sample: first 1410 sessions (to 2024-07-02); out-of-sample: last 603, never used to rank
+1.72e+09 session simulations in 2.28s = 7.54e+08 per second
+
+rank variant                                                        |   IS R  IS DD   trd  win% |  OOS R OOS DD   trd
+1    win 10+15m gap>=4 stop 2b+0 tp 1.5R/2.0R bias any              |  107.8   11.2   692   47% |   20.3   19.9   403
+2    win 60+15m gap>=1 stop 8b+4 tp 1.5R/6.0R bias with-15m         |  132.4   13.9   776   45% |  -17.9   35.9   338
+3    win 90+30m gap>=8 stop 5b+3 tp 1.5R/3.0R bias with-15m         |   67.2    7.0   282   48% |   -3.8   20.7   243
+4    win 5+30m gap>=8 stop 2b+0 tp 1.5R/4.0R bias against-15m       |   89.9    9.7   381   46% |    1.2   17.2   282
+5    win 90+30m gap>=8 stop 5b+4 tp 1.5R/3.0R bias with-15m         |   73.8    8.1   282   49% |   -2.3   19.3   243
+6    win 20+15m gap>=8 stop 4b+0 tp 2.0R/4.0R bias against-15m      |   90.3   10.1   276   43% |   36.4   11.1   198
+7    win 20+15m gap>=8 stop 5b+0 tp 2.0R/4.0R bias against-15m      |   90.2   10.1   276   43% |   32.6   12.7   198
+8    win 20+15m gap>=8 stop 5b+0 tp 1.0R/2.0R bias against-15m      |   57.8    6.6   276   58% |   20.2    7.1   198
+9    win 20+15m gap>=6 stop 5b+0 tp 2.0R/6.0R bias any              |  127.8   14.7   573   39% |   33.3   16.4   363
+10   win 60+90m gap>=0 stop 12b+2 tp 1.5R/4.0R bias any             |  157.7   18.2  1410   44% |   -3.8   26.3   603
+
+6 of the top 10 stayed profitable out of sample. The best in-sample row is
+the most overfit one by construction: judge a rule by its OOS column.
+
+span                          trk count   total ms      GB/s   %peak      items/s
+upload bars+grid              gpu     1      11.95       3.3      2%            -
+sim_shared                    gpu     7    1944.80       3.5      2%     8.85e+08
+metrics (session-major)       gpu     7      44.02     157.3     90%            -
+download results              gpu     1       6.10       5.6      3%            -

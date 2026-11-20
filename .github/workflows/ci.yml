@@ -1,0 +1,29 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  cpu:
+    # Hosted runners have no GPU: this job builds the CPU backends and runs every test
+    # that does not need a device (GPU tests skip themselves). Sanitizers catch memory
+    # errors and data races in the thread pool.
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        sanitize: ["", "address,undefined", "thread"]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libgtest-dev
+      # ThreadSanitizer cannot start under the kernel's default 32-bit mmap randomisation
+      # ("unexpected memory mapping"); 28 bits is the standard workaround.
+      - run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: build
+        run: |
+          FLAGS=""
+          if [ -n "${{ matrix.sanitize }}" ]; then FLAGS="-fsanitize=${{ matrix.sanitize }} -fno-omit-frame-pointer"; fi
+          cmake -S . -B build -G Ninja -DGBT_GPU=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DCMAKE_CXX_FLAGS="$FLAGS" -DCMAKE_EXE_LINKER_FLAGS="$FLAGS"
+          cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+      - name: smoke
+        run: |
+          ./build/gbt sweep --grid small --backend cpu --sessions 300 --min-trades 10 --top 5
+          ./build/gbt bench --variants 256 --sessions 300 --backends cpu1,cpu

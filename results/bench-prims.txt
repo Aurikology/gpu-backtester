@@ -1,0 +1,17 @@
+GPU: NVIDIA GeForce RTX 4050 Laptop GPU
+measured peak (device copy): 174.0 GB/s
+op         elements  mine GB/s    %peak     hipCUB    %peak mine/cub  exact
+reduce        65536       25.7      15%       25.6      15%     1.00  yes
+scan-3pass    65536       15.5       9%       42.7      25%     0.36  yes
+scan-1pass    65536       21.3      12%       42.7      25%     0.50  yes
+reduce      1048576      409.6     235%      409.6     235%     1.00  yes
+scan-3pass  1048576      362.1     208%      431.9     248%     0.84  yes
+scan-1pass  1048576      356.2     205%      431.9     248%     0.82  yes
+reduce     16777216      183.1     105%      184.1     106%     0.99  yes
+scan-3pass 16777216      116.5      67%      189.1     109%     0.62  yes
+scan-1pass 16777216      174.8     100%      189.1     109%     0.92  yes
+reduce     67108864      185.0     106%      186.6     107%     0.99  yes
+scan-3pass 67108864      115.4      66%      172.4      99%     0.67  yes
+scan-1pass 67108864      175.4     101%      172.4      99%     1.02  yes
+GB/s counts the minimum traffic (reduce: n reads; scan: n reads + n writes).
+mine/cub > 1.00 would mean the hand-written kernel is faster.

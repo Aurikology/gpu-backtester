@@ -1,0 +1,8 @@
+build*/
+*.gbt
+*.trace.json
+trace*.json
+data/
+results/private/
+__pycache__/
+!results/trace-default.json

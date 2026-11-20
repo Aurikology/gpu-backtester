@@ -1,0 +1,9 @@
+8192 variants x 2013 sessions = 1.65e+07 session simulations per backend
+
+backend       seconds    sims/second  speed-up           checksum  CPU counters
+cpu1            6.322       2.61e+06      1.0x   18ec259c230f2286  unavailable
+cpu             0.765       2.16e+07      8.3x   18ec259c230f2286  unavailable
+gpu-naive       0.193       8.57e+07     32.8x   18ec259c230f2286  -
+gpu             0.029       5.78e+08    221.6x   18ec259c230f2286  -
+
+all backends agree to the bit: yes
