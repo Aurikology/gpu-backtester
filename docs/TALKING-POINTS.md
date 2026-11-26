@@ -44,7 +44,8 @@ README.
    checksum differs from the CPU reference*. Wrong is never fast.
 8. **What it told me about trading.** One variant made +184R from 2019 to mid-2024, then
    *lost* 36R on the held-out 2024 to 2026 data. Most top variants stayed positive, but at
-   a fraction of their in-sample returns. And the Monte Carlo showed my mechanical rules
+   a fraction of their in-sample returns. A deflated Sharpe ratio over all 152,064 trials
+   gives that +184R variant 0.00, and no top-15 row reaches 0.95. And the Monte Carlo showed my mechanical rules
    give a 56% pass rate at best, against ~100% for my 312 hand-traded journal trades: the discretion is
    where the edge is, if it survives live trading.
 

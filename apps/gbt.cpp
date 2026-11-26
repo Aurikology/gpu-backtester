@@ -24,6 +24,7 @@
 #include "gbt/gpu_info.hpp"
 #include "gbt/montecarlo.hpp"
 #include "gbt/profiler.hpp"
+#include "gbt/stats.hpp"
 #include "gbt/strategy.hpp"
 
 using namespace gbt;
@@ -154,19 +155,34 @@ int cmd_sweep(const Args& a) {
     return score(res[x].in_sample, min_trades) > score(res[y].in_sample, min_trades);
   });
 
+  // Deflated Sharpe: every variant tried counts as a trial, so the best in-sample Sharpe is
+  // compared with the best that N variants with no edge would be expected to reach. The
+  // variants are correlated, so N overstates the independent trials: this is conservative.
+  std::vector<double> trial_sharpes;
+  trial_sharpes.reserve(res.size());
+  for (const auto& r : res) trial_sharpes.push_back(sharpe_of(r.in_sample));
+  size_t trials = 0;
+  const double sr0 = sr0_of(trial_sharpes, &trials);
+  std::printf("deflated Sharpe: %zu in-sample trials; with no edge the best is expected to reach\n"
+              "SR0 = %.3f per trade. DSR = P(true Sharpe > SR0) for that row's in-sample trades.\n\n",
+              trials, sr0);
+
   const int top = int(a.num("top", 15));
-  std::printf("%-4s %-62s | %6s %6s %5s %5s | %6s %6s %5s\n", "rank", "variant", "IS R", "IS DD",
-              "trd", "win%", "OOS R", "OOS DD", "trd");
-  int shown = 0, oos_positive = 0;
+  std::printf("%-4s %-62s | %6s %6s %5s %5s %5s %5s | %6s %6s %5s\n", "rank", "variant", "IS R",
+              "IS DD", "trd", "win%", "SR", "DSR", "OOS R", "OOS DD", "trd");
+  int shown = 0, oos_positive = 0, dsr_pass = 0;
   for (size_t k = 0; k < idx.size() && shown < top; ++k) {
     const auto& r = res[idx[k]];
     if (r.in_sample.trades < min_trades) break;
     const auto& is = r.in_sample;
     const auto& os = r.out_of_sample;
-    std::printf("%-4d %-62s | %6.1f %6.1f %5d %4.0f%% | %6.1f %6.1f %5d\n", shown + 1,
+    const double dsr = psr(trades_of(bars, grid[idx[k]], 0, split), sr0);
+    std::printf("%-4d %-62s | %6.1f %6.1f %5d %4.0f%% %5.3f %5.2f | %6.1f %6.1f %5d\n", shown + 1,
                 describe(grid[idx[k]]).c_str(), is.total_r, is.max_dd, is.trades,
-                100.0 * is.wins / std::max(1, is.trades), os.total_r, os.max_dd, os.trades);
+                100.0 * is.wins / std::max(1, is.trades), sharpe_of(is), dsr, os.total_r,
+                os.max_dd, os.trades);
     oos_positive += os.total_r > 0 ? 1 : 0;
+    dsr_pass += dsr >= 0.95 ? 1 : 0;
     ++shown;
   }
   if (shown == 0) std::printf("(no variant reached %d in-sample trades)\n", min_trades);
@@ -174,6 +190,9 @@ int cmd_sweep(const Args& a) {
     std::printf("\n%d of the top %d stayed profitable out of sample. The best in-sample row is\n"
                 "the most overfit one by construction: judge a rule by its OOS column.\n",
                 oos_positive, shown);
+  if (shown > 0)
+    std::printf("%d of the top %d have DSR >= 0.95: their in-sample Sharpe survives %zu trials.\n",
+                dsr_pass, shown, trials);
 
   if (a.has("save-best-r") && shown > 0) {
     const auto r = trades_of(bars, grid[idx[0]]);

@@ -20,7 +20,7 @@ endif()
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-ffp-contract=off>
                     $<$<COMPILE_LANGUAGE:CXX>:-Wall> $<$<COMPILE_LANGUAGE:CXX>:-Wextra>)
 
-set(CORE_SOURCES src/data.cpp src/strategy.cpp src/engine.cpp src/montecarlo.cpp src/profiler.cpp)
+set(CORE_SOURCES src/data.cpp src/strategy.cpp src/engine.cpp src/montecarlo.cpp src/profiler.cpp src/stats.cpp)
 set(GPU_SOURCES src/gpu_engine.cu src/prims.cu)
 
 if(GBT_GPU STREQUAL "OFF")
@@ -62,7 +62,7 @@ if(GBT_TESTS)
   find_package(GTest REQUIRED)
   enable_testing()
   add_executable(gbt_tests tests/test_data.cpp tests/test_strategy.cpp tests/test_engine.cpp
-                           tests/test_montecarlo.cpp)
+                           tests/test_montecarlo.cpp tests/test_stats.cpp)
   if(NOT GBT_GPU STREQUAL "OFF")
     target_sources(gbt_tests PRIVATE tests/test_prims.cu)
     if(GBT_GPU STREQUAL "AMD")

@@ -1,10 +1,10 @@
 {"traceEvents":[
 {"name":"thread_name","ph":"M","pid":1,"tid":1,"args":{"name":"CPU"}},
 {"name":"thread_name","ph":"M","pid":1,"tid":2,"args":{"name":"GPU stream"}},
-{"name":"upload bars+grid","ph":"X","pid":1,"tid":2,"ts":290938,"dur":12265.2,"args":{"bytes":1.74433e+07,"items":0,"GB/s":1.42218}},
-{"name":"sim_shared","ph":"X","pid":1,"tid":2,"ts":337937,"dur":324530,"args":{"bytes":1.07373e+09,"items":2.68434e+08,"GB/s":3.30858}},
-{"name":"metrics (session-major)","ph":"X","pid":1,"tid":2,"ts":662470,"dur":7000.06,"args":{"bytes":1.07907e+09,"items":0,"GB/s":154.151}},
-{"name":"sim_shared","ph":"X","pid":1,"tid":2,"ts":669475,"dur":50152.4,"args":{"bytes":1.50685e+08,"items":3.76713e+07,"GB/s":3.00454}},
-{"name":"metrics (session-major)","ph":"X","pid":1,"tid":2,"ts":719629,"dur":884.736,"args":{"bytes":1.51434e+08,"items":0,"GB/s":171.163}},
-{"name":"download results","ph":"X","pid":1,"tid":2,"ts":720516,"dur":1811.39,"args":{"bytes":6.08256e+06,"items":0,"GB/s":3.35795}}
+{"name":"upload bars+grid","ph":"X","pid":1,"tid":2,"ts":167403,"dur":9068.42,"args":{"bytes":1.74433e+07,"items":0,"GB/s":1.92352}},
+{"name":"sim_shared","ph":"X","pid":1,"tid":2,"ts":201671,"dur":313613,"args":{"bytes":1.07373e+09,"items":2.68434e+08,"GB/s":3.42375}},
+{"name":"metrics (session-major)","ph":"X","pid":1,"tid":2,"ts":515286,"dur":6946.82,"args":{"bytes":1.07907e+09,"items":0,"GB/s":155.333}},
+{"name":"sim_shared","ph":"X","pid":1,"tid":2,"ts":522235,"dur":50264.1,"args":{"bytes":1.50685e+08,"items":3.76713e+07,"GB/s":2.99787}},
+{"name":"metrics (session-major)","ph":"X","pid":1,"tid":2,"ts":572501,"dur":879.616,"args":{"bytes":1.51434e+08,"items":0,"GB/s":172.159}},
+{"name":"download results","ph":"X","pid":1,"tid":2,"ts":573383,"dur":1080.13,"args":{"bytes":6.08256e+06,"items":0,"GB/s":5.63133}}
 ]}

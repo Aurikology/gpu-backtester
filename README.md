@@ -29,7 +29,7 @@ what changed, and which number moved.
 |---|---|
 | Data | 3.44M one-minute bars, 2019-01-02 to 2026-11-12, cut into 2,013 New York sessions |
 | Engines | 1 CPU thread, 16-thread pool, naive GPU kernel, shared-memory GPU kernel |
-| Correctness | 35 tests; every GPU configuration must match the CPU checksum to the bit |
+| Correctness | 40 tests; every GPU configuration must match the CPU checksum to the bit |
 | Engine speed-up | 2.6M sims/s (1 thread), 22M (16 threads), 86M (naive GPU), **580M-820M (tuned GPU)** |
 | Primitives | hand-written single-pass scan at **0.92-1.02x hipCUB** and ~100% of measured peak bandwidth |
 | Profiler | Perfetto timeline, per-kernel GB/s vs a *measured* 174 GB/s peak, Linux `perf_event` counters |
@@ -220,17 +220,25 @@ and a $1,000 static floor, the pass rate must be exactly 2/3.
 
 ## 9. What it says about the trading
 
-| | in-sample R (2019 to Jul 2024) | out-of-sample R (Jul 2024 to Nov 2026) |
-|---|---|---|
-| rank 1 of 152,064 | +89.9 | +1.2 |
-| best in-sample total R in the top 15 | **+184.1** | **-36.0** |
-| top 15 that stayed profitable | | 13 of 15, mostly +1R to +25R |
+| | in-sample R (2019 to Jul 2024) | deflated Sharpe | out-of-sample R (Jul 2024 to Nov 2026) |
+|---|---|---|---|
+| rank 1 of 152,064 | +89.9 | 0.61 | +1.2 |
+| best in-sample total R in the top 15 | **+184.1** | **0.00** | **-36.0** |
+| top 15 that stayed profitable | | 0 of 15 reach 0.95 | 13 of 15, mostly +1R to +25R |
 
 **Reading it honestly:**
 - After 152,064 tries, the best in-sample row is the most overfit one by construction.
 - Out-of-sample returns are a small fraction of in-sample.
-- No multiple-testing correction is applied here. With 152k variants, a deflated Sharpe
-  ratio (implemented in the companion Python project) is the right next filter.
+- **Deflated Sharpe ratio** (Bailey and Lopez de Prado, `include/gbt/stats.hpp`): every
+  one of the 152,064 variants counts as a trial. With no edge, the best per-trade Sharpe
+  among them is expected to reach SR0 = 0.143; DSR is the probability a row's true Sharpe
+  beats that, after skew and fat tails. The Sharpes come from sums the GPU already
+  streams, so the correction adds no kernel work; only the printed rows replay their trades.
+- **It flags the row that failed.** The +184R variant has the highest in-sample R but a
+  Sharpe of 0.075, well under SR0, so DSR 0.00, and it lost 36R out of sample. No row
+  clears 0.95. The variants are correlated, so 152,064 overstates the independent trials
+  and the test leans conservative.
+- The port is tested against the Python implementation's numbers on the same inputs.
 
 The tool's most useful output was measuring how much of an apparent edge is search noise.
 
@@ -241,7 +249,7 @@ The tool's most useful output was measuring how much of an apparent edge is sear
 ```bash
 # Ubuntu 24.04 (native or WSL2), NVIDIA GPU:
 sudo bash scripts/setup-wsl.sh            # gcc, CMake, GoogleTest, CUDA 12.8, HIP headers
-bash scripts/build.sh NVIDIA build        # builds and runs the 35 tests
+bash scripts/build.sh NVIDIA build        # builds and runs the 40 tests
 # AMD GPU with ROCm installed:  bash scripts/build.sh AMD build
 # No GPU:                       bash scripts/build.sh OFF build
 
@@ -264,10 +272,12 @@ include/gbt/  strategy.hpp   rules (host+device), metrics, parameter grids
               engine.hpp     the four backends
               prims.cuh      warp/block/device reduce and scan
               montecarlo.hpp evaluation simulator
+              stats.hpp      probabilistic and deflated Sharpe ratio
               profiler.hpp   timeline, Chrome trace, perf_event counters
 src/          gpu_engine.cu  sweep + Monte Carlo kernels, peak-bandwidth probe
               prims.cu       device scans and the hipCUB benchmark
-tests/        hand-built sessions, mirror property, CPU==GPU, gambler's ruin, scan sizes
+tests/        hand-built sessions, mirror property, CPU==GPU, gambler's ruin, scan sizes,
+              deflated Sharpe parity with Python
 scripts/      setup, build, auto-tuner
 docs/         TALKING-POINTS.md
 ```
