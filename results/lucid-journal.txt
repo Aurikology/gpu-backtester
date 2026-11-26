@@ -1,0 +1,24 @@
+312 trades in the sample: mean +0.42R, win rate 43%
+rules: target $3000, trailing drawdown $2000 (locks at start balance), 120 days max, cost $0.00/trade
+1000000 simulated attempts per risk level on the GPU, one trade a day
+
+risk/trade     pass     fail  unresolved   days to pass
+      100$    98.5%     0.0%        1.5%           72.2
+      150$    99.9%     0.0%        0.1%           49.4
+      200$   100.0%     0.0%        0.0%           37.6
+      250$   100.0%     0.0%        0.0%           30.5   <- best
+      300$   100.0%     0.0%        0.0%           25.8
+      350$    99.9%     0.1%        0.0%           22.4
+      400$    99.9%     0.1%        0.0%           19.8
+      450$    99.7%     0.3%        0.0%           17.9
+      500$    99.5%     0.5%        0.0%           16.2
+      550$    99.1%     0.9%        0.0%           14.9
+      600$    99.1%     0.9%        0.0%           13.8
+      650$    99.1%     0.9%        0.0%           12.9
+      700$    97.0%     3.0%        0.0%           11.8
+      750$    97.0%     3.0%        0.0%           11.1
+      800$    97.0%     3.0%        0.0%           10.5
+
+best: risk $250 per trade -> 100.0% pass (+/- 0.0% simulation error)
+caveat: assumes future trades look like this sample. 312 trades is a usable sample, but regimes change.
+1.5e+07 paths in 0.27s

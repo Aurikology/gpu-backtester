@@ -1,5 +1,6 @@
 #include "gbt/montecarlo.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -20,7 +21,7 @@ static RiskOutcome summarise(float risk, const int* outcomes, int paths) {
   }
   o.pass = double(pass) / paths;
   o.fail = double(fail) / paths;
-  o.unresolved = 1.0 - o.pass - o.fail;
+  o.unresolved = std::max(0.0, 1.0 - o.pass - o.fail);  // never print -0.0% from rounding
   o.mean_days_to_pass = pass ? double(days) / double(pass) : 0.0;
   return o;
 }

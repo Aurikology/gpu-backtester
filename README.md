@@ -204,15 +204,18 @@ therefore produce the same paths, and a test checks that they match path for pat
 **Validation:** against the gambler's-ruin formula. With a fair +/-1R coin, a $500 target
 and a $1,000 static floor, the pass rate must be exactly 2/3.
 
-| R sample (target $3,000, trailing DD $2,000) | mean R | best risk | pass rate |
+| R sample (target $3,000, trailing DD $2,000, 120 days, 1M paths) | mean R | best risk | pass rate |
 |---|---|---|---|
-| discretionary journal, 333 bar-replay trades | +0.54 | $400 | 99% |
+| discretionary journal, 312 bar-replay trades | +0.42 | $250 | ~100% |
 | best mechanical variant, 663 backtest trades | +0.14 | $200 | **56%** |
 
 - With the mechanical edge, sizing matters: at $200 the pass rate is 56%; at $400 it drops
   to 45%, because failures climb faster than passes.
-- The journal's 99% assumes live trades will look like bar-replay trades, and they usually
-  don't.
+- The journal sample is the same 312 trades the companion Python project scores: one
+  session that practised a different strategy (top/bottom-tick entries) is left out by what
+  it traded, not how it did. At ~100% the simulator can no longer tell sizes apart between
+  $200 and $650 (`results/lucid-journal.txt`).
+- That figure assumes live trades will look like bar-replay trades, and they usually don't.
 - 15 million paths take 0.2-0.3 s.
 
 ## 9. What it says about the trading
