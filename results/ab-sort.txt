@@ -1,0 +1,16 @@
+# scripts/ab-sort.sh, RTX 4050 laptop, one binary, arms alternate. Times are the sim_shared kernel.
+# default grid: 152,064 variants x 2,013 sessions
+run 1  grid-order   352.34 ms   sorted   246.50 ms
+run 2  grid-order   353.47 ms   sorted   247.62 ms
+run 3  grid-order   352.61 ms   sorted   246.56 ms
+run 4  grid-order   352.60 ms   sorted   248.50 ms
+run 5  grid-order   353.94 ms   sorted   248.61 ms
+checksum grid-order a6bb0fa189bff7ee  (0.405641 s end to end)
+checksum sorted     a6bb0fa189bff7ee  (0.319229 s end to end)
+
+# large grid: 855,360 variants x 2,013 sessions
+run 1  grid-order  2001.22 ms   sorted  1370.46 ms
+run 2  grid-order  1956.93 ms   sorted  1371.92 ms
+run 3  grid-order  1954.39 ms   sorted  1373.35 ms
+checksum grid-order a72cfddb9ccc5ff1  (2.051874 s end to end)
+checksum sorted     a72cfddb9ccc5ff1  (1.577740 s end to end)

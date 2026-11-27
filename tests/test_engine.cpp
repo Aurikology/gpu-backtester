@@ -47,6 +47,27 @@ TEST(Engine, GpuBatchingDoesNotChangeResults) {
   EXPECT_EQ(checksum(run_sweep(bars(), grid, opt)), checksum(run(Backend::Cpu1)));
 }
 
+// The divergence fix reorders variants on the device and must hand every result back to
+// its own variant: compare field by field, not just the order-independent checksum.
+TEST(Engine, GpuVariantSortKeepsCallerOrder) {
+  if (!gpu_available()) GTEST_SKIP() << "no GPU";
+  const auto grid = make_grid(GridSize::Small);
+  ASSERT_NE(grid[0].bias, grid[1].bias) << "grid order already sorted: test proves nothing";
+  SweepOptions opt;
+  opt.max_batch_bytes = 300 * sizeof(float) * 7;  // sorting and batching together
+  opt.sort_variants = false;
+  const auto plain = run_sweep(bars(), grid, opt);
+  opt.sort_variants = true;
+  const auto sorted = run_sweep(bars(), grid, opt);
+  ASSERT_EQ(plain.size(), sorted.size());
+  for (size_t v = 0; v < plain.size(); ++v) {
+    ASSERT_EQ(sorted[v].in_sample.trades, plain[v].in_sample.trades) << "variant " << v;
+    ASSERT_EQ(sorted[v].in_sample.total_r, plain[v].in_sample.total_r) << "variant " << v;
+    ASSERT_EQ(sorted[v].out_of_sample.total_r, plain[v].out_of_sample.total_r) << "variant " << v;
+    ASSERT_EQ(sorted[v].out_of_sample.max_dd, plain[v].out_of_sample.max_dd) << "variant " << v;
+  }
+}
+
 TEST(Engine, MetricsAgreeWithTheTradeList) {
   const auto grid = make_grid(GridSize::Small);
   const auto res = run(Backend::Cpu1);

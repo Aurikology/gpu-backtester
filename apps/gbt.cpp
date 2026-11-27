@@ -132,6 +132,7 @@ int cmd_sweep(const Args& a) {
   opt.backend = parse_backend(a.str("backend", gpu_available() ? "gpu" : "cpu"));
   opt.oos_fraction = a.num("oos", 0.3);
   opt.block_size = int(a.num("block", 128));
+  opt.sort_variants = !a.has("no-sort");
   Timeline tl;
   opt.timeline = &tl;
   const size_t split = oos_split(bars.num_sessions(), opt.oos_fraction);
@@ -246,6 +247,7 @@ int cmd_bench(const Args& a) {
     SweepOptions opt;
     opt.backend = parse_backend(name);
     opt.block_size = int(a.num("block", 128));
+    opt.sort_variants = !a.has("no-sort");
     if ((opt.backend == Backend::GpuNaive || opt.backend == Backend::GpuShared) && !gpu_available()) {
       if (!json) std::printf("%-10s (no GPU)\n", name.c_str());
       continue;
@@ -369,7 +371,8 @@ void usage() {
       "  gbt data <bars.csv> [--out bars.gbt]\n"
       "  gbt sweep [--data bars.gbt] [--grid small|default|large] [--backend cpu1|cpu|gpu-naive|gpu]\n"
       "            [--oos 0.3] [--top 15] [--min-trades 50] [--trace trace.json] [--save-best-r r.txt]\n"
-      "  gbt bench [--data bars.gbt] [--variants 4096] [--backends cpu1,cpu,gpu-naive,gpu] [--block 128] [--json]\n"
+      "            [--no-sort]   (run variants in grid order: the pre-divergence-fix baseline)\n"
+      "  gbt bench [--data bars.gbt] [--variants 4096] [--backends cpu1,cpu,gpu-naive,gpu] [--block 128] [--no-sort] [--json]\n"
       "  gbt bench-prims [--reps 20]\n"
       "  gbt lucid --r <trades.csv|r.txt> [--target 3000] [--max-dd 2000] [--static] [--no-lock]\n"
       "            [--daily-limit 0] [--cost 0] [--days 60] [--risk 50:1000:50] [--paths 100000] [--cpu]\n\n"

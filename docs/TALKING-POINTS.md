@@ -10,7 +10,7 @@ README.
 > works. Testing one rule change over seven years of minute data took seconds; testing
 > every combination took hours. So I wrote a backtester in C++ and HIP, AMD's GPU
 > language, that runs **152,064 strategy variants over 2,013 trading days in
-> 0.6 seconds**, 30x faster than my 16-thread CPU version, and
+> half a second**, 35x faster than my 16-thread CPU version, and
 > the GPU agrees with the CPU to the last bit. Then I built a Monte Carlo simulator on top
 > that tells me my odds of passing a prop-firm evaluation at each position size."
 
@@ -75,7 +75,16 @@ Two kernels, two different answers. The metrics kernel runs at 90% of measured p
 bandwidth, so it's memory-bound and nearly done. The simulation kernel uses 2% of
 bandwidth, so memory isn't the problem: it's branch divergence. Lanes of one warp hold
 different parameters and close their trades on different bars, and the warp waits for the
-slowest lane. Next step: sort variants so each warp holds similar ones.
+slowest lane.
+
+**So what did you do about the divergence?**
+I looked at the grid order first. The bias filter was the innermost loop, so every warp
+mixed all three filters, and they disagree on whether the day trades at all, where the
+entry can be, even the direction. I sort the variants on the host by the parameters that
+decide whether and where a trade opens, leave only the targets varying inside a warp,
+and scatter the results back. The kernel got 1.43x faster on both grids with the same
+checksum, and the sort costs about 1% of the kernel. End to end it's less, 0.57 to 0.48 s,
+because there's a fixed ~0.2 s of GPU start-up per run that I didn't touch.
 
 **Walk me through decoupled look-back.**
 Each tile of 2,048 elements computes its own sum and publishes it right away as one 64-bit
@@ -109,11 +118,12 @@ The auto-tuner is the same idea automated.
 ## Resume bullets
 
 - Built a C++20/HIP GPU backtesting engine that evaluates 152,064 parameter variants over
-  7 years of 1-minute Nasdaq futures data in 0.6 s, 30x a 16-thread
+  7 years of 1-minute Nasdaq futures data in 0.5 s, 35x a 16-thread
   CPU baseline, with bit-identical CPU/GPU results enforced by tests.
 - Raised kernel throughput 6.7x by staging each trading day in shared memory
-  and switching to a session-major layout for coalesced writes; profiled with a custom
-  Perfetto timeline and measured-peak bandwidth reporting.
+  and switching to a session-major layout for coalesced writes, then a further 1.43x by
+  reordering variants to cut warp branch divergence; profiled with a custom Perfetto
+  timeline and measured-peak bandwidth reporting.
 - Implemented warp-shuffle reduce and a single-pass decoupled look-back scan matching hipCUB
   (0.92-1.02x, ~100% of measured bandwidth); built a GPU Monte Carlo simulator estimating
   prop-firm evaluation pass rates across position sizes.

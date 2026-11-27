@@ -8,9 +8,9 @@ C++20 and **HIP**, AMD's GPU programming model. The same source compiles for AMD
 RTX 4050 laptop GPU.
 
 **Headline:** 152,064 strategy variants x 2,013 trading days (306 million session
-simulations) in **~0.6 s**, about **30x a 16-thread CPU** (17.7 s), with **bit-identical
+simulations) in **~0.5 s**, about **35x a 16-thread CPU** (16.9 s), with **bit-identical
 results** on every backend. The larger grid, 855,360 variants (1.72 billion
-simulations), runs in 2.3 s.
+simulations), runs in 1.9 s.
 
 It answers two questions for a discretionary trader:
 1. *Which version of my rules actually works?* A parameter sweep, ranked on 2019-2024 and
@@ -29,7 +29,7 @@ what changed, and which number moved.
 |---|---|
 | Data | 3.44M one-minute bars, 2019-01-02 to 2026-11-12, cut into 2,013 New York sessions |
 | Engines | 1 CPU thread, 16-thread pool, naive GPU kernel, shared-memory GPU kernel |
-| Correctness | 40 tests; every GPU configuration must match the CPU checksum to the bit |
+| Correctness | 41 tests; every GPU configuration must match the CPU checksum to the bit |
 | Engine speed-up | 2.6M sims/s (1 thread), 22M (16 threads), 86M (naive GPU), **580M-820M (tuned GPU)** |
 | Primitives | hand-written single-pass scan at **0.92-1.02x hipCUB** and ~100% of measured peak bandwidth |
 | Profiler | Perfetto timeline, per-kernel GB/s vs a *measured* 174 GB/s peak, Linux `perf_event` counters |
@@ -116,8 +116,24 @@ From the profiler (`results/sweep-default-gpu.txt`):
   branches and close their trades on different bars, and the warp waits for its slowest
   lane. That is **branch divergence**.
 
-The next step is to sort variants so that each warp holds similar ones (same window, same
-bias). Neighbouring lanes would then take the same branches.
+**The fix: sort variants so each warp holds similar ones.** `make_grid()` builds the grid
+with the bias filter as its *innermost* axis, so every warp mixed all three filters, and the
+filters disagree on almost everything: whether the day trades at all, the first allowed
+entry bar, even the trade direction. The window was already an outer axis, so it was never
+the problem. Before launch the engine now sorts variants by the parameters that decide
+*whether and where* a trade opens (bias, window, gap size, stop). Only the targets, which
+decide *when* it closes, still vary inside a warp. Results are scattered back to the
+caller's order, so nothing downstream changes.
+
+| grid | `sim_shared`, grid order | sorted | speed-up | full-grid checksum |
+|---|---|---|---|---|
+| default, 152,064 variants | 352 ms | 247 ms | **1.43x** | `a6bb0fa189bff7ee` both |
+| large, 855,360 variants | 1,957 ms | 1,372 ms | **1.43x** | `a72cfddb9ccc5ff1` both |
+
+The sort costs a host `stable_sort` and a permutation, about 1% of the kernel time. End
+to end, a `gbt sweep` gains less (0.57 to 0.48 s) because each run also pays ~0.2 s of fixed
+GPU context start-up and upload. `--no-sort` keeps the old order, and `scripts/ab-sort.sh`
+alternates the two on one binary (`results/ab-sort.txt`).
 
 ## 5. Auto-tuning with a correctness oracle
 
@@ -249,7 +265,7 @@ The tool's most useful output was measuring how much of an apparent edge is sear
 ```bash
 # Ubuntu 24.04 (native or WSL2), NVIDIA GPU:
 sudo bash scripts/setup-wsl.sh            # gcc, CMake, GoogleTest, CUDA 12.8, HIP headers
-bash scripts/build.sh NVIDIA build        # builds and runs the 40 tests
+bash scripts/build.sh NVIDIA build        # builds and runs the 41 tests
 # AMD GPU with ROCm installed:  bash scripts/build.sh AMD build
 # No GPU:                       bash scripts/build.sh OFF build
 
@@ -278,7 +294,8 @@ src/          gpu_engine.cu  sweep + Monte Carlo kernels, peak-bandwidth probe
               prims.cu       device scans and the hipCUB benchmark
 tests/        hand-built sessions, mirror property, CPU==GPU, gambler's ruin, scan sizes,
               deflated Sharpe parity with Python
-scripts/      setup, build, auto-tuner
+scripts/      setup, build, gate (build + tests + bit-check + timed sweep -> results/perf-log.tsv),
+              divergence A/B, auto-tuner
 docs/         TALKING-POINTS.md
 ```
 

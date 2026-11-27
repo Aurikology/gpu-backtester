@@ -35,6 +35,9 @@ struct SweepOptions {
   int threads = 0;            // CpuN: 0 = hardware concurrency
   int block_size = 128;       // GPU threads per block; 128 won scripts/tune.py on an RTX 4050
   size_t max_batch_bytes = size_t(1) << 30;  // GPU result buffer per batch
+  // GpuShared: run variants in an order where neighbouring lanes take the same branches
+  // (bias filter outermost, targets innermost), then return results in the caller's order.
+  bool sort_variants = true;
   Timeline* timeline = nullptr;               // optional profiling
 };
 
