@@ -160,7 +160,12 @@ the group before them). Its first job was to predict a number already measured:
 
 The measurement falls inside the model's bracket, so it can rank candidate orders in two
 seconds of CPU time before anything runs on the GPU (`--explore`,
-`results/divergence-model.txt`). It also accounts for the failed experiment below: once
+`results/divergence-model.txt`). Of eight orders it tried, the best moved the runner target
+`tp2` ahead of the stop parameters, since it decides how long a trade stays open. The model
+said 3.4% fewer warp iterations; on the GPU it was **1.0-1.3% faster** (8 of 8 alternating
+runs, same checksums, `results/ab-tp2-order.txt`). The model ranks orders correctly but
+overstates small effects about 2.5x, so its predictions are a shortlist, not a result. That
+order is now the default. It also accounts for the failed experiment below: once
 sorted, the two models differ by 1%, so a single loop could save at most ~1% of iterations
 while costing more per iteration.
 

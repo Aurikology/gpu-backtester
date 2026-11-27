@@ -1,0 +1,14 @@
+# divergence_order key: tp2 before the stop parameters (candidate) vs targets last
+# (baseline = HEAD f1731bc). RTX 4050, arms alternate, sim_shared kernel ms.
+## default grid
+run 1  baseline 269.59   tp2-outer 253.11
+run 2  baseline 255.45   tp2-outer 255.19
+run 3  baseline 253.07   tp2-outer 249.83
+run 4  baseline 254.15   tp2-outer 250.78
+run 5  baseline 254.53   tp2-outer 252.29
+checksum baseline a6bb0fa189bff7ee  tp2-outer a6bb0fa189bff7ee
+## large grid
+run 1  baseline 1405.92   tp2-outer 1387.79
+run 2  baseline 1411.60   tp2-outer 1392.39
+run 3  baseline 1404.76   tp2-outer 1386.52
+checksum baseline a72cfddb9ccc5ff1  tp2-outer a72cfddb9ccc5ff1

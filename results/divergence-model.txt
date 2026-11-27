@@ -1,17 +1,19 @@
 # gbt divergence --data data/nq_2019_2026.gbt --every 4 --explore   (CPU only, 2026-11-27)
-# Measured on the RTX 4050 for comparison: sorted vs grid order = 1.43x (results/ab-sort.txt).
+# "sorted" is the shipped order (tp2 before stops). Measured on the RTX 4050:
+#   sorted (targets-last) vs grid order 1.43x   results/ab-sort.txt
+#   tp2-outer vs targets-last          ~1.01-1.013x (model said 1.035x)   results/ab-tp2-order.txt
 152064 variants, every 4th of 2013 sessions, warp 32
 
 order                useful       lockstep     serialised  eff lock   eff ser  pred lock   pred ser
-grid order         2.42e+08      4.225e+08      4.905e+08     57.3%     49.3%      1.00x      1.00x   (2.1s)
-sorted             2.42e+08      3.127e+08      3.158e+08     77.4%     76.6%      1.35x      1.55x   (2.0s)
+grid order         2.42e+08      4.225e+08      4.905e+08     57.3%     49.3%      1.00x      1.00x   (2.3s)
+sorted             2.42e+08      3.019e+08      3.051e+08     80.2%     79.3%      1.40x      1.61x   (1.9s)
 targets-mid        2.42e+08      3.115e+08      3.153e+08     77.7%     76.8%      1.36x      1.56x   (2.1s)
-by-end             2.42e+08      3.127e+08      3.158e+08     77.4%     76.6%      1.35x      1.55x   (2.3s)
-gap-first          2.42e+08      3.121e+08      3.124e+08     77.5%     77.5%      1.35x      1.57x   (2.0s)
-tp2-outer          2.42e+08      3.019e+08      3.051e+08     80.2%     79.3%      1.40x      1.61x   (2.0s)
-tp2-tp1            2.42e+08       3.09e+08      3.128e+08     78.3%     77.4%      1.37x      1.57x   (2.1s)
-tp2-pre-gap        2.42e+08      3.032e+08       3.12e+08     79.8%     77.6%      1.39x      1.57x   (2.0s)
-tp2-first          2.42e+08      3.032e+08       3.12e+08     79.8%     77.6%      1.39x      1.57x   (2.1s)
+by-end             2.42e+08      3.127e+08      3.158e+08     77.4%     76.6%      1.35x      1.55x   (2.0s)
+gap-first          2.42e+08      3.121e+08      3.124e+08     77.5%     77.5%      1.35x      1.57x   (1.9s)
+targets-last       2.42e+08      3.127e+08      3.158e+08     77.4%     76.6%      1.35x      1.55x   (1.9s)
+tp2-tp1            2.42e+08       3.09e+08      3.128e+08     78.3%     77.4%      1.37x      1.57x   (1.9s)
+tp2-pre-gap        2.42e+08      3.032e+08       3.12e+08     79.8%     77.6%      1.39x      1.57x   (1.9s)
+tp2-first          2.42e+08      3.032e+08       3.12e+08     79.8%     77.6%      1.39x      1.57x   (2.0s)
 
 useful = iterations each lane needs; lockstep / serialised = iterations the warp
 spends under each model. pred = predicted kernel speed-up vs grid order.

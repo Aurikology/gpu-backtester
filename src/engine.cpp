@@ -106,12 +106,17 @@ std::vector<float> trades_of(const BarSeries& b, const Params& p, size_t first, 
 // bars, opposite trade directions. Sorting by the parameters that decide *whether and
 // where* a trade opens (bias, window, gap, stop) and leaving only the targets, which
 // decide *when it closes*, to vary inside a warp keeps lanes on the same path longer.
+//
+// Within that, the runner target tp2 goes before the stop parameters: it decides how
+// long a trade stays open, so lanes sharing tp2 finish closer together. The divergence
+// model (gbt divergence --explore) scored this ~3.4% fewer warp iterations than putting
+// both targets last, and it was the best of the eight orders tried.
 std::vector<uint32_t> divergence_order(const std::vector<Params>& grid) {
   std::vector<uint32_t> idx(grid.size());
   for (size_t i = 0; i < idx.size(); ++i) idx[i] = uint32_t(i);
   auto key = [](const Params& p) {
-    return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap, p.stop_lookback,
-                           p.stop_buf, p.tp1_r, p.tp2_r);
+    return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap, p.tp2_r, p.stop_lookback,
+                           p.stop_buf, p.tp1_r);
   };
   std::stable_sort(idx.begin(), idx.end(),
                    [&](uint32_t a, uint32_t b) { return key(grid[a]) < key(grid[b]); });

@@ -320,9 +320,9 @@ int cmd_divergence(const Args& a) {
                         return std::make_tuple(p.bias, p.min_gap, p.win_start, p.win_len,
                                                p.stop_lookback, p.stop_buf, p.tp1_r, p.tp2_r);
                       })});
-    orders.push_back({"tp2-outer", by([](const Params& p) {
+    orders.push_back({"targets-last", by([](const Params& p) {  // the sort before 2026-11-27 pm
                         return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap,
-                                               p.tp2_r, p.stop_lookback, p.stop_buf, p.tp1_r);
+                                               p.stop_lookback, p.stop_buf, p.tp1_r, p.tp2_r);
                       })});
     orders.push_back({"tp2-tp1", by([](const Params& p) {
                         return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap,
