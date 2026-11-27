@@ -1,45 +1,46 @@
 # NOW — gpu-backtester
 
-_Last updated 2026-11-27._
+_Last updated 2026-11-27 (improve loop, unattended hour)._
 
 ## State
 
-- 41 tests green locally (RTX 4050, NVIDIA backend). CI = CPU only (no GPU on hosted runners).
-- **Divergence fix landed 2026-11-27:** variants are sorted before launch (bias, window, gap,
-  stop outer; targets inner). `sim_shared` 352 -> 247 ms on default, 1,957 -> 1,372 ms on large
-  (1.43x both), checksums unchanged. End to end: default sweep ~0.48 s, 35x the 16-thread CPU.
-- **Single-loop kernel tried 2026-11-27: 0.81x, kept off** (`--fused`, `results/ab-fused.txt`).
-  Bit-identical, same registers; nested loops already reconverge after the sort.
-- 46 tests (37 in the CPU-only build).
-- **Divergence model** (`gbt divergence`, 2026-11-27): CPU replay predicts the sort at 1.35-1.55x;
-  measured 1.43x. Sorted order is ~77% warp-efficient, so perfect packing is worth <=1.3x more.
-  `--explore` ranks orders: tp2 as an outer key scores ~3.4% fewer iterations (next: GPU A/B).
-- Workflow: `scripts/gate.sh` (build, tests, bit-check, timed sweep, perf log) +
-  `scripts/ab-sort.sh`. Rules in `CLAUDE.md`.
+- 46 tests (37 in the CPU-only build CI runs). RTX 4050 via WSL2 `Ubuntu-24.04`.
+- **Variant sort** (default since 2026-11-27): bias, window, gap, tp2, stop, tp1. `sim_shared`
+  352 -> ~250 ms on default, 1,957 -> ~1,390 ms on large; checksums unchanged
+  (`a6bb0fa189bff7ee`, `a72cfddb9ccc5ff1`). End to end ~0.5 s, ~35x the 16-thread CPU.
+  - sort itself vs grid order: 1.43x (`results/ab-sort.txt`)
+  - tp2 ahead of the stop keys: a further 1.0-1.3% (`results/ab-tp2-order.txt`)
+- **Single-loop kernel: 0.81x, kept off** (`--fused`, `results/ab-fused.txt`).
+- **Divergence model** `gbt divergence [--explore]`: CPU replay of loop counts per warp. Predicted
+  the sort at 1.35-1.55x vs 1.43x measured; predicted tp2-outer at 3.4% vs ~1.2% measured. Ranks
+  orders correctly, overstates small gains ~2.5x. Shipped order is ~80% warp-efficient, so even
+  perfect packing is worth at most ~1.25x more.
+- **Host spans** in the sweep report: GPU context, sort/unsort, alloc/free (`results/sweep-wall-breakdown.txt`).
+- Workflow: `scripts/verify.sh` (double check) -> commit -> push both -> ls-remote. Rules in `CLAUDE.md`.
 
-## Where the time goes now (default grid, sorted)
+## Where the time goes now (default grid)
 
 | span | ms | note |
 |---|---|---|
-| `sim_shared` | ~247-270 | still divergence-bound: targets still vary inside a warp, and different days end trades on different bars |
-| GPU context creation | 183-282 | fixed per process (own span since 2026-11-27); dominates small runs |
-| sort + unsort (host) | 15-27 | ~a quarter of what the sort saves; cheaper key possible |
+| `sim_shared` | ~250 | ~80% warp-efficient by the model; rest is targets/days ending trades on different bars |
+| GPU context creation | 183-282 | fixed per process; only a long-lived process avoids it |
+| sort + unsort (host) | 15-27 | a cheaper packed key could cut this |
 | alloc + free buffers | 21-28 | |
-| `metrics` | ~8 | 89% of measured peak bandwidth: done |
+| upload, `metrics`, download | ~17-24 | `metrics` at ~89% of measured peak: done |
 
 **Aurik, human-only:** Nsight Compute works under WSL2 but the counters are blocked
 (`ERR_NVGPUCTRPERM`). NVIDIA Control Panel (Windows) -> Desktop menu -> Enable Developer
 Settings -> Developer -> Manage GPU Performance Counters -> "Allow access to the GPU
-performance counters to all users". Needs admin. Then `ncu` gives real warp efficiency.
+performance counters to all users". Needs admin. Then `ncu` gives real warp efficiency, and
+the software model can be checked against it.
 
 ## Candidates (Aurik ranks)
 
-1. **Run on AMD Developer Cloud** (MI300X): wave64 numbers + rocprofv3 to check my profiler.
-   Costs money; price not checked yet.
-2. **Small ROCm upstream PR** (rocPRIM/hipCUB docs or tests): open-source credit for AMD.
-3. **Next kernel step:** measure before guessing again. The single-loop guess was wrong, so
-   get warp-efficiency numbers first (Nsight Compute; check it runs under WSL2). Then the
-   candidates are a data-driven order (group variants by the entry bar they actually trade
-   on a sample of days) or splitting entry search and trade management into two kernels.
-4. **The fixed 0.18-0.28 s is GPU context creation**, once per process: only a long-lived process
-   (one `gbt` run doing several sweeps) avoids it. Buffer reuse would save the 21-28 ms.
+1. **Run on AMD Developer Cloud** (MI300X): wave64 numbers + rocprofv3. Costs money; price unchecked.
+2. **Small ROCm upstream PR** (rocPRIM/hipCUB docs or tests): free, but he writes and sends it.
+3. **Kernel:** the model caps further packing gains at ~1.25x. A bigger lever is cutting work:
+   variants sharing (bias, window, gap, stop) repeat the identical entry scan; computing each
+   scan once per group and only managing trades per variant would remove the repeated scan
+   iterations. How much that is, scan vs manage share, is not measured yet. Two-kernel
+   design; size it with the model first.
+4. **Host overhead:** packed sort key (15-27 ms -> a few), buffer reuse (21-28 ms).
