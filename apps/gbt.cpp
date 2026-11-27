@@ -15,9 +15,11 @@
 #include <fstream>
 #include <map>
 #include <numeric>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include "gbt/data.hpp"
@@ -353,6 +355,19 @@ int cmd_divergence(const Args& a) {
   }
   std::printf("\nuseful = iterations each lane needs; lockstep / serialised = iterations the warp"
               "\nspends under each model. pred = predicted kernel speed-up vs grid order.\n");
+  // The entry scan does not read the targets, so variants differing only in (tp1, tp2)
+  // repeat it exactly. This is the ceiling on what sharing the scan could remove.
+  const DivergenceModel m = model_divergence(bars, grid, divergence_order(grid), warp, stride);
+  std::set<std::tuple<int, int, int, float, int, float>> scan_groups;
+  for (const Params& p : grid)
+    scan_groups.insert({p.bias, p.win_start, p.win_len, p.min_gap, p.stop_lookback, p.stop_buf});
+  const double share = m.useful_scan / m.useful;
+  const double per_group = double(grid.size()) / double(scan_groups.size());
+  std::printf("\nuseful work: %.1f%% entry scan, %.1f%% trade management.\n"
+              "%zu distinct scans for %zu variants (%.1f variants repeat each scan).\n"
+              "Sharing the scan would remove at most %.1f%% of the useful iterations.\n",
+              100 * share, 100 * (1 - share), scan_groups.size(), grid.size(), per_group,
+              100 * share * (1 - 1 / per_group));
   return 0;
 }
 

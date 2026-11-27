@@ -73,6 +73,7 @@ std::vector<uint32_t> divergence_order(const std::vector<Params>& grid);
 //   useful      sum of every lane's own iterations / warp width
 struct DivergenceModel {
   double lockstep = 0, serialised = 0, useful = 0;  // totals over sampled warps
+  double useful_scan = 0, useful_manage = 0;        // useful, split by loop
   double efficiency_lockstep() const { return lockstep > 0 ? useful / lockstep : 0; }
   double efficiency_serialised() const { return serialised > 0 ? useful / serialised : 0; }
 };

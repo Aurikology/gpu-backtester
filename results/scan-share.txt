@@ -1,0 +1,11 @@
+# How much of the work is the entry scan, and how often is each scan repeated?
+# gbt divergence (CPU only, 2026-11-27). The scan never reads tp1/tp2, so the
+# variants of one (bias, window, gap, stop) group repeat it exactly.
+## default grid, every 4th session
+useful work: 62.3% entry scan, 37.7% trade management.
+13824 distinct scans for 152064 variants (11.0 variants repeat each scan).
+Sharing the scan would remove at most 56.7% of the useful iterations.
+## large grid, every 8th session
+useful work: 62.0% entry scan, 38.0% trade management.
+77760 distinct scans for 855360 variants (11.0 variants repeat each scan).
+Sharing the scan would remove at most 56.4% of the useful iterations.

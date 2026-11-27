@@ -38,9 +38,12 @@ the software model can be checked against it.
 
 1. **Run on AMD Developer Cloud** (MI300X): wave64 numbers + rocprofv3. Costs money; price unchecked.
 2. **Small ROCm upstream PR** (rocPRIM/hipCUB docs or tests): free, but he writes and sends it.
-3. **Kernel:** the model caps further packing gains at ~1.25x. A bigger lever is cutting work:
-   variants sharing (bias, window, gap, stop) repeat the identical entry scan; computing each
-   scan once per group and only managing trades per variant would remove the repeated scan
-   iterations. How much that is, scan vs manage share, is not measured yet. Two-kernel
-   design; size it with the model first.
+3. **Kernel: share the entry scan (measured ceiling ~2x).** 62% of useful iterations are the
+   entry scan, and the scan never reads tp1/tp2, so each of the 13,824 distinct scans
+   (default grid) is repeated by 11 variants. Sharing it removes at most 56.7% of iterations
+   (`results/scan-share.txt`; large grid 56.4%). Packing tweaks are capped at ~1.25x, so this is
+   the lever. Design: kernel 1, one thread per (session, scan group) -> entry bar, direction,
+   entry price, stop, risk; kernel 2, one thread per (session, variant) manages from that entry.
+   Bit-identity is checkable (same expressions); host maps variant -> group. The model has
+   overstated small gains ~2.5x, so expect less than 2x; measure.
 4. **Host overhead:** packed sort key (15-27 ms -> a few), buffer reuse (21-28 ms).

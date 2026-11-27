@@ -142,7 +142,7 @@ DivergenceModel model_divergence(const BarSeries& b, const std::vector<Params>& 
         for (size_t v0 = 0; v0 < V; v0 += W) {
           const size_t n = std::min(W, V - v0);
           int max_total = 0, max_scan = 0;
-          long sum = 0;
+          long sum = 0, sum_scan = 0;
           groups.clear();
           for (size_t k = 0; k < n; ++k) {
             lane[k] = StepCount{};
@@ -151,6 +151,7 @@ DivergenceModel model_divergence(const BarSeries& b, const std::vector<Params>& 
             max_total = std::max(max_total, total);
             max_scan = std::max(max_scan, lane[k].scan);
             sum += total;
+            sum_scan += lane[k].scan;
             if (lane[k].entry >= 0) groups.push_back({lane[k].entry, lane[k].manage});
           }
           std::sort(groups.begin(), groups.end());
@@ -165,6 +166,8 @@ DivergenceModel model_divergence(const BarSeries& b, const std::vector<Params>& 
           m.lockstep += double(max_total);
           m.serialised += double(ser);
           m.useful += double(sum) / double(W);
+          m.useful_scan += double(sum_scan) / double(W);
+          m.useful_manage += double(sum - sum_scan) / double(W);
         }
       }
       part[size_t(t)] = m;
@@ -176,6 +179,8 @@ DivergenceModel model_divergence(const BarSeries& b, const std::vector<Params>& 
     total.lockstep += m.lockstep;
     total.serialised += m.serialised;
     total.useful += m.useful;
+    total.useful_scan += m.useful_scan;
+    total.useful_manage += m.useful_manage;
   }
   return total;
 }
