@@ -18,9 +18,16 @@ _Last updated 2026-11-27._
 
 | span | ms | note |
 |---|---|---|
-| `sim_shared` | ~247 | still divergence-bound: targets still vary inside a warp, and different days end trades on different bars |
-| GPU context + upload | ~200 | fixed per process; dominates small runs |
+| `sim_shared` | ~247-270 | still divergence-bound: targets still vary inside a warp, and different days end trades on different bars |
+| GPU context creation | 183-282 | fixed per process (own span since 2026-11-27); dominates small runs |
+| sort + unsort (host) | 15-27 | ~a quarter of what the sort saves; cheaper key possible |
+| alloc + free buffers | 21-28 | |
 | `metrics` | ~8 | 89% of measured peak bandwidth: done |
+
+**Aurik, human-only:** Nsight Compute works under WSL2 but the counters are blocked
+(`ERR_NVGPUCTRPERM`). NVIDIA Control Panel (Windows) -> Desktop menu -> Enable Developer
+Settings -> Developer -> Manage GPU Performance Counters -> "Allow access to the GPU
+performance counters to all users". Needs admin. Then `ncu` gives real warp efficiency.
 
 ## Candidates (Aurik ranks)
 
@@ -31,5 +38,5 @@ _Last updated 2026-11-27._
    get warp-efficiency numbers first (Nsight Compute; check it runs under WSL2). Then the
    candidates are a data-driven order (group variants by the entry bar they actually trade
    on a sample of days) or splitting entry search and trade management into two kernels.
-4. **Cut the fixed ~0.2 s** (persistent context / reuse buffers across runs) for the tuner and
-   small sweeps.
+4. **The fixed 0.18-0.28 s is GPU context creation**, once per process: only a long-lived process
+   (one `gbt` run doing several sweeps) avoids it. Buffer reuse would save the 21-28 ms.

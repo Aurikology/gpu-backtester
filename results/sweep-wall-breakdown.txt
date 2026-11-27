@@ -1,0 +1,26 @@
+# gbt sweep --data data/nq_2019_2026.gbt --grid default, RTX 4050 laptop, two runs.
+# Host (cpu) spans added 2026-11-27 so the report covers the whole wall time.
+3.06e+08 session simulations in 0.54s = 5.69e+08 per second
+span                          trk count   total ms      GB/s   %peak      items/s
+sort variants (host)          cpu     1      10.70         -       -            -
+gpu context (host)            cpu     1     203.73         -       -            -
+alloc result buffers (host)   cpu     1       9.31         -       -            -
+upload bars+grid              gpu     1       8.31       2.1      1%            -
+sim_shared                    gpu     2     254.66       4.8      3%      1.2e+09
+metrics (session-major)       gpu     2       8.35     147.4     84%            -
+download results              gpu     1       1.12       5.4      3%            -
+free device buffers (host)    cpu     1      11.71         -       -            -
+unsort results (host)         cpu     1       4.42         -       -            -
+
+3.06e+08 session simulations in 0.52s = 5.89e+08 per second
+span                          trk count   total ms      GB/s   %peak      items/s
+sort variants (host)          cpu     1      12.21         -       -            -
+gpu context (host)            cpu     1     183.24         -       -            -
+alloc result buffers (host)   cpu     1       7.46         -       -            -
+upload bars+grid              gpu     1       7.76       2.2      1%            -
+sim_shared                    gpu     2     254.43       4.8      3%      1.2e+09
+metrics (session-major)       gpu     2       7.75     158.7     91%            -
+download results              gpu     1       1.18       5.2      3%            -
+free device buffers (host)    cpu     1      13.69         -       -            -
+unsort results (host)         cpu     1       3.33         -       -            -
+

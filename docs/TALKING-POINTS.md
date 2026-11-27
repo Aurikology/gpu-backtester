@@ -83,8 +83,10 @@ mixed all three filters, and they disagree on whether the day trades at all, whe
 entry can be, even the direction. I sort the variants on the host by the parameters that
 decide whether and where a trade opens, leave only the targets varying inside a warp,
 and scatter the results back. The kernel got 1.43x faster on both grids with the same
-checksum, and the sort costs about 1% of the kernel. End to end it's less, 0.57 to 0.48 s,
-because there's a fixed ~0.2 s of GPU start-up per run that I didn't touch.
+checksum. The host-side sort and unsort cost 15-27 ms, up to a quarter of what they save.
+End to end it's less, 0.57 to 0.48 s, because creating the GPU context costs 0.18-0.28 s per
+process, about as much as the kernel itself. I only know that because I made the profiler time
+the host side too; at first I'd guessed the sort was 1% and the start-up was 0.2 s.
 
 **Did anything you tried not work?**
 Yes. I thought the nested loops (scan for an entry, then manage the trade) made lanes that

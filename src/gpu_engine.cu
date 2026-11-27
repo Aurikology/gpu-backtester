@@ -1,6 +1,7 @@
 // GPU sweep and Monte Carlo kernels.
 #include <algorithm>
 #include <cstring>
+#include <optional>
 #include <tuple>
 
 #include "gbt/engine.hpp"
@@ -115,10 +116,15 @@ std::vector<VariantResult> run_sweep_gpu(const BarSeries& bars, const std::vecto
                                          const SweepOptions& opt) {
   if (!opt.sort_variants || opt.backend != Backend::GpuShared)
     return run_sweep_gpu_ordered(bars, grid, opt);
-  const auto order = divergence_order(grid);
+  std::vector<uint32_t> order;
   std::vector<Params> sorted(grid.size());
-  for (size_t i = 0; i < order.size(); ++i) sorted[i] = grid[order[i]];
+  {
+    CpuSpan s(opt.timeline, "sort variants (host)");
+    order = divergence_order(grid);
+    for (size_t i = 0; i < order.size(); ++i) sorted[i] = grid[order[i]];
+  }
   const auto res_sorted = run_sweep_gpu_ordered(bars, sorted, opt);
+  CpuSpan s(opt.timeline, "unsort results (host)");
   std::vector<VariantResult> res(grid.size());
   for (size_t i = 0; i < order.size(); ++i) res[order[i]] = res_sorted[i];
   return res;
@@ -133,6 +139,12 @@ std::vector<VariantResult> run_sweep_gpu_ordered(const BarSeries& bars,
   const bool naive = opt.backend == Backend::GpuNaive;
   const int block = opt.block_size;
 
+  {
+    // The runtime creates the GPU context lazily on the first real call; doing it here
+    // gives that fixed cost its own span instead of hiding it inside the first upload.
+    CpuSpan s(opt.timeline, "gpu context (host)");
+    GBT_CHECK(hipFree(nullptr));
+  }
   GpuTimer timer(opt.timeline);
   int t_up = timer.begin("upload bars+grid",
                          double(bars.num_bars()) * 16 + double(S) * sizeof(Session) +
@@ -146,8 +158,10 @@ std::vector<VariantResult> run_sweep_gpu_ordered(const BarSeries& bars,
   // inside GPU memory (1.7M variants x 1,900 sessions would be 13 GB).
   const size_t per_variant = size_t(S) * sizeof(float);
   const int batch = int(std::max<size_t>(1, std::min<size_t>(size_t(V), opt.max_batch_bytes / per_variant)));
+  std::optional<CpuSpan> alloc_span(std::in_place, opt.timeline, "alloc result buffers (host)");
   DeviceBuffer<float> d_r(size_t(batch) * size_t(S));
   DeviceBuffer<VariantResult> d_res{size_t(V)};
+  alloc_span.reset();
 
   for (int v0 = 0; v0 < V; v0 += batch) {
     const int vb = std::min(batch, V - v0);
@@ -187,6 +201,14 @@ std::vector<VariantResult> run_sweep_gpu_ordered(const BarSeries& bars,
   auto out = d_res.to_host();
   timer.end(t_down);
   GBT_CHECK(hipDeviceSynchronize());
+  timer.flush();
+  {
+    CpuSpan s(opt.timeline, "free device buffers (host)");
+    for (auto* b : {&d_o, &d_h, &d_l, &d_c, &d_r}) b->release();
+    d_sess.release();
+    d_grid.release();
+    d_res.release();
+  }
   return out;
 }
 

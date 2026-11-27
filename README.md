@@ -130,10 +130,20 @@ caller's order, so nothing downstream changes.
 | default, 152,064 variants | 352 ms | 247 ms | **1.43x** | `a6bb0fa189bff7ee` both |
 | large, 855,360 variants | 1,957 ms | 1,372 ms | **1.43x** | `a72cfddb9ccc5ff1` both |
 
-The sort costs a host `stable_sort` and a permutation, about 1% of the kernel time. End
-to end, a `gbt sweep` gains less (0.57 to 0.48 s) because each run also pays ~0.2 s of fixed
-GPU context start-up and upload. `--no-sort` keeps the old order, and `scripts/ab-sort.sh`
-alternates the two on one binary (`results/ab-sort.txt`).
+End to end, a `gbt sweep` gains less (0.57 to 0.48 s), because the kernel is only part of
+the wall time. The profiler now times the host side of a sweep too
+(default grid, range over four runs; two are in `results/sweep-wall-breakdown.txt`):
+
+| span | ms | |
+|---|---|---|
+| GPU context creation | 183-282 | fixed per process, as large as the kernel itself, and the noisiest part |
+| `sim_shared` | 254-274 | the kernel |
+| sort + unsort variants (host) | 15-27 | the cost of the divergence fix: 15-25% of the ~105 ms it saves |
+| alloc + free device buffers | 21-28 | |
+| upload, `metrics`, download | ~17-24 | |
+
+`--no-sort` keeps the old order, and `scripts/ab-sort.sh` alternates the two on one binary
+(`results/ab-sort.txt`).
 
 **A follow-up that failed: one loop instead of two.** The strategy nests trade management
 inside the entry scan, so I expected lanes that entered on different bars to run their trades

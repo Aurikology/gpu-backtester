@@ -34,8 +34,11 @@ struct DeviceBuffer {
   DeviceBuffer(const std::vector<T>& host) : DeviceBuffer(host.size()) {
     if (n) GBT_CHECK(hipMemcpy(ptr, host.data(), n * sizeof(T), hipMemcpyHostToDevice));
   }
-  ~DeviceBuffer() {
+  ~DeviceBuffer() { release(); }
+  void release() {
     if (ptr) (void)hipFree(ptr);
+    ptr = nullptr;
+    n = 0;
   }
   DeviceBuffer(const DeviceBuffer&) = delete;
   DeviceBuffer& operator=(const DeviceBuffer&) = delete;

@@ -6,3 +6,4 @@ date	commit	dirty	gpu	sweep_default_s	sim_shared_ms	full_grid_checksum	note
 2026-11-27	32a66d3	yes	NVIDIA	0.50	303.98	a6bb0fa189bff7ee	fused-loop
 2026-11-27	32a66d3	yes	NVIDIA	0.44	247.08	a6bb0fa189bff7ee	fused-opt-in-default-nested
 2026-11-27	b42b9de	no	NVIDIA	0.48	253.26	a6bb0fa189bff7ee	verify-script-first-run
+2026-11-27	b9fb8c6	yes	NVIDIA	0.51	253.91	a6bb0fa189bff7ee	host-spans
