@@ -29,7 +29,7 @@ what changed, and which number moved.
 |---|---|
 | Data | 3.44M one-minute bars, 2019-01-02 to 2026-11-12, cut into 2,013 New York sessions |
 | Engines | 1 CPU thread, 16-thread pool, naive GPU kernel, shared-memory GPU kernel |
-| Correctness | 41 tests; every GPU configuration must match the CPU checksum to the bit |
+| Correctness | 43 tests; every GPU configuration must match the CPU checksum to the bit |
 | Engine speed-up | 2.6M sims/s (1 thread), 22M (16 threads), 86M (naive GPU), **580M-820M (tuned GPU)** |
 | Primitives | hand-written single-pass scan at **0.92-1.02x hipCUB** and ~100% of measured peak bandwidth |
 | Profiler | Perfetto timeline, per-kernel GB/s vs a *measured* 174 GB/s peak, Linux `perf_event` counters |
@@ -134,6 +134,18 @@ The sort costs a host `stable_sort` and a permutation, about 1% of the kernel ti
 to end, a `gbt sweep` gains less (0.57 to 0.48 s) because each run also pays ~0.2 s of fixed
 GPU context start-up and upload. `--no-sort` keeps the old order, and `scripts/ab-sort.sh`
 alternates the two on one binary (`results/ab-sort.txt`).
+
+**A follow-up that failed: one loop instead of two.** The strategy nests trade management
+inside the entry scan, so I expected lanes that entered on different bars to run their trades
+one after another. `simulate_session_fused()` rewrites the rules as a single loop over bars
+with a scan/manage state, so every lane advances one bar per iteration. It is bit-identical
+(same checksums on both grids, and a CPU test compares the two value for value) and uses the
+same registers (39 vs 40), but it is **slower: 0.81x** on both grids (247 to 307 ms, 1,375
+to 1,705 ms; `results/ab-fused.txt`). After the sort, a warp's lanes mostly enter on the same
+bar, so the nested loops were already reconverging, and the fused loop pays its state check
+and both halves' code every bar. That reading is a hypothesis: confirming it needs Nsight
+Compute's warp-efficiency counters. `--fused` keeps the experiment reproducible; the default is
+the nested loop.
 
 ## 5. Auto-tuning with a correctness oracle
 
@@ -265,7 +277,7 @@ The tool's most useful output was measuring how much of an apparent edge is sear
 ```bash
 # Ubuntu 24.04 (native or WSL2), NVIDIA GPU:
 sudo bash scripts/setup-wsl.sh            # gcc, CMake, GoogleTest, CUDA 12.8, HIP headers
-bash scripts/build.sh NVIDIA build        # builds and runs the 41 tests
+bash scripts/build.sh NVIDIA build        # builds and runs the 43 tests
 # AMD GPU with ROCm installed:  bash scripts/build.sh AMD build
 # No GPU:                       bash scripts/build.sh OFF build
 

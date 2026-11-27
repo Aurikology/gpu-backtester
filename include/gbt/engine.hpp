@@ -38,6 +38,10 @@ struct SweepOptions {
   // GpuShared: run variants in an order where neighbouring lanes take the same branches
   // (bias filter outermost, targets innermost), then return results in the caller's order.
   bool sort_variants = true;
+  // GpuShared: simulate with the single-loop simulate_session_fused() instead of the
+  // nested-loop simulate_session(). Same bits; the CPU always runs the nested one.
+  // Off: measured 0.81x on both grids (results/ab-fused.txt). Kept as an ablation.
+  bool fused_loop = false;
   Timeline* timeline = nullptr;               // optional profiling
 };
 

@@ -1,0 +1,15 @@
+# Single-loop (fused) strategy vs nested loops, both with the variant sort. RTX 4050,
+# one binary, arms alternate. sim_shared kernel ms. Registers: nested 39, fused 40.
+# default grid: 152,064 variants x 2,013 sessions
+run 1  nested 248.69   fused 308.12
+run 2  nested 247.20   fused 306.76
+run 3  nested 245.77   fused 306.92
+run 4  nested 247.98   fused 307.49
+run 5  nested 247.01   fused 306.70
+checksum nested a6bb0fa189bff7ee  fused a6bb0fa189bff7ee
+
+# large grid: 855,360 variants x 2,013 sessions
+run 1  nested 1372.41   fused 1699.61
+run 2  nested 1373.83   fused 1710.80
+run 3  nested 1380.07   fused 1705.10
+checksum nested a72cfddb9ccc5ff1  fused a72cfddb9ccc5ff1

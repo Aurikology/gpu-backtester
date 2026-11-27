@@ -86,6 +86,14 @@ and scatter the results back. The kernel got 1.43x faster on both grids with the
 checksum, and the sort costs about 1% of the kernel. End to end it's less, 0.57 to 0.48 s,
 because there's a fixed ~0.2 s of GPU start-up per run that I didn't touch.
 
+**Did anything you tried not work?**
+Yes. I thought the nested loops (scan for an entry, then manage the trade) made lanes that
+entered on different bars run their trades one after another, so I rewrote the rules as one
+loop over bars with a state flag. Bit-identical, same register count, and 19% slower. After
+the sort, lanes in a warp mostly enter on the same bar anyway, so the nested version was
+already converging, and the single loop pays for both halves every bar. I kept it behind a
+flag and wrote the number down, because a measured "no" tells you where the time isn't.
+
 **Walk me through decoupled look-back.**
 Each tile of 2,048 elements computes its own sum and publishes it right away as one 64-bit
 word, flag plus value, so nobody can read a flag with a stale value. Then it walks

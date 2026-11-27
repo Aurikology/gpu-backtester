@@ -8,6 +8,9 @@ _Last updated 2026-11-27._
 - **Divergence fix landed 2026-11-27:** variants are sorted before launch (bias, window, gap,
   stop outer; targets inner). `sim_shared` 352 -> 247 ms on default, 1,957 -> 1,372 ms on large
   (1.43x both), checksums unchanged. End to end: default sweep ~0.48 s, 35x the 16-thread CPU.
+- **Single-loop kernel tried 2026-11-27: 0.81x, kept off** (`--fused`, `results/ab-fused.txt`).
+  Bit-identical, same registers; nested loops already reconverge after the sort.
+- 43 tests (34 in the CPU-only build).
 - Workflow: `scripts/gate.sh` (build, tests, bit-check, timed sweep, perf log) +
   `scripts/ab-sort.sh`. Rules in `CLAUDE.md`.
 
@@ -24,9 +27,9 @@ _Last updated 2026-11-27._
 1. **Run on AMD Developer Cloud** (MI300X): wave64 numbers + rocprofv3 to check my profiler.
    Costs money; price not checked yet.
 2. **Small ROCm upstream PR** (rocPRIM/hipCUB docs or tests): open-source credit for AMD.
-3. **Next kernel step:** data-driven order (group variants by the entry bar they actually
-   trade on a sample of days), or split entry search and trade management into two passes.
-   Measure the expected gain from warp-efficiency first (needs Nsight Compute, works outside
-   WSL's PMU limits).
+3. **Next kernel step:** measure before guessing again. The single-loop guess was wrong, so
+   get warp-efficiency numbers first (Nsight Compute; check it runs under WSL2). Then the
+   candidates are a data-driven order (group variants by the entry bar they actually trade
+   on a sample of days) or splitting entry search and trade management into two kernels.
 4. **Cut the fixed ~0.2 s** (persistent context / reuse buffers across runs) for the tuner and
    small sweeps.

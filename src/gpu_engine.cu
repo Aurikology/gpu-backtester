@@ -48,6 +48,9 @@ __global__ void sim_naive(const float* __restrict__ o, const float* __restrict__
 // variant against that copy. All lanes of a warp read the same bar at the same time,
 // which shared memory serves as a broadcast. Output is session-major:
 // out[s * V + v], so a warp's 32 writes land in one contiguous 128-byte line.
+// Fused=true uses simulate_session_fused() (one loop over bars, lanes reconverge every
+// bar); false uses the nested-loop simulate_session() that the CPU reference runs.
+template <bool Fused>
 __global__ void sim_shared(const float* __restrict__ o, const float* __restrict__ h,
                            const float* __restrict__ l, const float* __restrict__ c,
                            const Session* __restrict__ sess, const Params* __restrict__ grid,
@@ -65,7 +68,8 @@ __global__ void sim_shared(const float* __restrict__ o, const float* __restrict_
   __syncthreads();
   const int v = blockIdx.x * blockDim.x + threadIdx.x;
   if (v >= V) return;
-  out[size_t(s) * size_t(V) + size_t(v)] = simulate_session(so, sh, sl, sc, grid[v]);
+  out[size_t(s) * size_t(V) + size_t(v)] = Fused ? simulate_session_fused(so, sh, sl, sc, grid[v])
+                                                 : simulate_session(so, sh, sl, sc, grid[v]);
 }
 
 // One thread per variant walks its sessions in date order (the equity curve is a
@@ -164,8 +168,12 @@ std::vector<VariantResult> run_sweep_gpu_ordered(const BarSeries& bars,
     } else {
       dim3 g(unsigned((vb + block - 1) / block), unsigned(S));
       int t = timer.begin("sim_shared", items * 4, items);
-      sim_shared<<<g, block>>>(d_o.ptr, d_h.ptr, d_l.ptr, d_c.ptr, d_sess.ptr, d_grid.ptr + v0,
-                               vb, d_r.ptr);
+      if (opt.fused_loop)
+        sim_shared<true><<<g, block>>>(d_o.ptr, d_h.ptr, d_l.ptr, d_c.ptr, d_sess.ptr,
+                                       d_grid.ptr + v0, vb, d_r.ptr);
+      else
+        sim_shared<false><<<g, block>>>(d_o.ptr, d_h.ptr, d_l.ptr, d_c.ptr, d_sess.ptr,
+                                        d_grid.ptr + v0, vb, d_r.ptr);
       GBT_CHECK(hipGetLastError());
       timer.end(t);
       t = timer.begin("metrics (session-major)", items * 4 + vb * sizeof(VariantResult));

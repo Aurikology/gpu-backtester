@@ -68,6 +68,14 @@ TEST(Engine, GpuVariantSortKeepsCallerOrder) {
   }
 }
 
+TEST(Engine, GpuFusedLoopMatchesCpu) {
+  if (!gpu_available()) GTEST_SKIP() << "no GPU";
+  SweepOptions opt;
+  opt.fused_loop = true;
+  EXPECT_EQ(checksum(run_sweep(bars(), make_grid(GridSize::Small), opt)),
+            checksum(run(Backend::Cpu1)));
+}
+
 TEST(Engine, MetricsAgreeWithTheTradeList) {
   const auto grid = make_grid(GridSize::Small);
   const auto res = run(Backend::Cpu1);

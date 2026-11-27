@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstring>
 
 #include "gbt/data.hpp"
 #include "gbt/strategy.hpp"
@@ -143,4 +144,29 @@ TEST(Strategy, GridsHaveTheAdvertisedSizes) {
   EXPECT_EQ(make_grid(GridSize::Default).size(), 152064u);
   EXPECT_EQ(make_grid(GridSize::Large).size(), 855360u);
   for (const auto& p : make_grid(GridSize::Default)) ASSERT_GT(p.tp2_r, p.tp1_r);
+}
+
+// simulate_session_fused() (GPU, one loop) must reproduce simulate_session() (CPU,
+// nested loops) to the bit, NaN for NaN, on every variant of the small grid and a slice
+// of the default grid across synthetic sessions.
+TEST(Strategy, FusedLoopIsBitIdenticalToNested) {
+  const BarSeries b = make_synthetic(120, 7);
+  std::vector<Params> grid = make_grid(GridSize::Small);
+  const auto def = make_grid(GridSize::Default);
+  for (size_t i = 0; i < def.size(); i += 97) grid.push_back(def[i]);
+  size_t trades = 0;
+  for (const Session& s : b.sessions) {
+    const size_t i = size_t(s.begin);
+    const float *o = &b.open[i], *h = &b.high[i], *l = &b.low[i], *c = &b.close[i];
+    for (const Params& p : grid) {
+      const float want = simulate_session(o, h, l, c, p);
+      const float got = simulate_session_fused(o, h, l, c, p);
+      uint32_t wb, gb;
+      std::memcpy(&wb, &want, 4);
+      std::memcpy(&gb, &got, 4);
+      ASSERT_EQ(gb, wb) << describe(p) << " session " << s.date;
+      trades += is_trade(want) ? 1 : 0;
+    }
+  }
+  EXPECT_GT(trades, size_t(1000)) << "too few trades: the comparison proves little";
 }

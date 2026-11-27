@@ -118,6 +118,95 @@ GBT_HD inline float simulate_session(const float* o, const float* h, const float
   return no_trade();
 }
 
+// The same rules as simulate_session(), restructured as ONE loop over bars with a
+// two-state machine (scanning for an entry / managing the open trade), for the GPU.
+//
+// Why: in simulate_session() trade management is a loop nested inside the scan loop.
+// When lanes of one warp enter on different bars, the warp runs one lane group's whole
+// management loop, then resumes the others' scan: the trades are serialised. Here
+// every lane advances exactly one bar per iteration, so the warp reconverges each bar
+// and costs ~(bars until its last lane finishes) instead of a sum of trade lengths.
+//
+// The arithmetic is written expression for expression like simulate_session(), so the
+// result is bit-identical; tests and the CPU==GPU checksum hold the two to that.
+//
+// Measured result: SLOWER, 0.81x on both grids (results/ab-fused.txt), with the same
+// register count. After the variant sort a warp's lanes mostly enter on the same bar,
+// so the nested loops already reconverge, and the fused body pays its state check and
+// both halves' code every bar. Off by default; gbt sweep --fused reproduces it.
+GBT_HD inline float simulate_session_fused(const float* o, const float* h, const float* l,
+                                           const float* c, const Params& p) {
+  const int n = kSessionMinutes;
+
+  int dir15 = 0;
+  if (p.bias != 0) {
+    const float d = c[14] - o[0];
+    dir15 = d > 0.f ? 1 : (d < 0.f ? -1 : 0);
+    if (dir15 == 0) return no_trade();
+  }
+  int start = p.win_start;
+  if (p.bias != 0 && start < 15) start = 15;
+  int end = p.win_start + p.win_len;  // exclusive
+  if (end > n - 1) end = n - 1;
+
+  bool bear_on = false, bull_on = false;
+  float bear_top = 0.f, bull_bot = 0.f;
+
+  bool in_trade = false;
+  int dir = 0;
+  float entry = 0.f, stop = 0.f, risk = 0.f, tp1 = 0.f, tp2 = 0.f, r = 0.f;
+  bool full = true;
+
+  for (int i = 2; i < n; ++i) {
+    if (!in_trade) {
+      if (i >= end) return no_trade();
+      const int j = i;
+      if (h[j] < l[j - 2] && l[j - 2] - h[j] >= p.min_gap) { bear_on = true; bear_top = l[j - 2]; }
+      if (l[j] > h[j - 2] && l[j] - h[j - 2] >= p.min_gap) { bull_on = true; bull_bot = h[j - 2]; }
+      int d = 0;
+      if (bear_on && c[j] > bear_top) { d = 1; bear_on = false; }
+      else if (bull_on && c[j] < bull_bot) { d = -1; bull_on = false; }
+      if (d == 0 || j < start) continue;
+      if (p.bias == 1 && d != dir15) continue;
+      if (p.bias == 2 && d != -dir15) continue;
+      const float e = c[j];
+      int first = j - p.stop_lookback + 1;
+      if (first < 0) first = 0;
+      float swing = d > 0 ? l[j] : h[j];
+      for (int k = first; k < j; ++k) swing = d > 0 ? fminf(swing, l[k]) : fmaxf(swing, h[k]);
+      const float st = d > 0 ? swing - p.stop_buf : swing + p.stop_buf;
+      const float rk = d > 0 ? e - st : st - e;
+      if (rk < kMinRisk) continue;
+      in_trade = true;
+      dir = d;
+      entry = e;
+      stop = st;
+      risk = rk;
+      tp1 = entry + dir * p.tp1_r * risk;
+      tp2 = entry + dir * p.tp2_r * risk;
+      full = true;
+      r = 0.f;
+    } else {
+      const int k = i;
+      const bool stop_hit = dir > 0 ? l[k] <= stop : h[k] >= stop;
+      if (stop_hit) {
+        const float exit = stop - dir * kStopSlip;
+        const float rr = dir * (exit - entry) / risk;
+        return r + (full ? rr : 0.5f * rr);
+      }
+      if (full && (dir > 0 ? h[k] >= tp1 : l[k] <= tp1)) {
+        r += 0.5f * p.tp1_r;
+        full = false;
+        stop = entry;
+      }
+      if (!full && (dir > 0 ? h[k] >= tp2 : l[k] <= tp2)) return r + 0.5f * p.tp2_r;
+    }
+  }
+  if (!in_trade) return no_trade();
+  const float rr = dir * (c[n - 1] - entry) / risk;
+  return r + (full ? rr : 0.5f * rr);
+}
+
 // ---- per-variant statistics over the sessions, in date order ----
 struct Metrics {
   float total_r = 0.f;
