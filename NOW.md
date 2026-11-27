@@ -10,7 +10,10 @@ _Last updated 2026-11-27._
   (1.43x both), checksums unchanged. End to end: default sweep ~0.48 s, 35x the 16-thread CPU.
 - **Single-loop kernel tried 2026-11-27: 0.81x, kept off** (`--fused`, `results/ab-fused.txt`).
   Bit-identical, same registers; nested loops already reconverge after the sort.
-- 43 tests (34 in the CPU-only build).
+- 46 tests (37 in the CPU-only build).
+- **Divergence model** (`gbt divergence`, 2026-11-27): CPU replay predicts the sort at 1.35-1.55x;
+  measured 1.43x. Sorted order is ~77% warp-efficient, so perfect packing is worth <=1.3x more.
+  `--explore` ranks orders: tp2 as an outer key scores ~3.4% fewer iterations (next: GPU A/B).
 - Workflow: `scripts/gate.sh` (build, tests, bit-check, timed sweep, perf log) +
   `scripts/ab-sort.sh`. Rules in `CLAUDE.md`.
 

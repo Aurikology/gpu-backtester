@@ -5,6 +5,7 @@
 //   gbt sweep --data f.gbt ...       run a parameter grid, rank in-sample, show out-of-sample
 //   gbt bench --data f.gbt ...       same work on every backend: speed + exact agreement
 //   gbt bench-prims                  hand-written reduce/scan vs hipCUB
+//   gbt divergence --data f.gbt      software model of warp divergence per launch order
 //   gbt lucid --r trades.csv ...     prop-firm evaluation pass odds by dollar risk
 #include <algorithm>
 #include <chrono>
@@ -287,6 +288,74 @@ int cmd_bench(const Args& a) {
   return all_match ? 0 : 2;
 }
 
+// Software divergence model: how much of each warp's time is spent waiting for its
+// slowest lane, for the grid order and the sorted order. CPU only, no GPU counters.
+int cmd_divergence(const Args& a) {
+  BarSeries bars = load_data(a);
+  const auto grid = make_grid(parse_grid(a.str("grid", "default")));
+  const int warp = int(a.num("warp", 32));
+  const int stride = int(a.num("every", 1));
+  std::vector<uint32_t> plain(grid.size());
+  std::iota(plain.begin(), plain.end(), 0u);
+  std::vector<std::pair<const char*, std::vector<uint32_t>>> orders = {
+      {"grid order", plain}, {"sorted", divergence_order(grid)}};
+  if (a.has("explore")) {
+    // Candidate orders, scored by the model before anything runs on the GPU.
+    auto by = [&](auto key) {
+      std::vector<uint32_t> idx = plain;
+      std::stable_sort(idx.begin(), idx.end(),
+                       [&](uint32_t x, uint32_t y) { return key(grid[x]) < key(grid[y]); });
+      return idx;
+    };
+    orders.push_back({"targets-mid", by([](const Params& p) {
+                        return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap,
+                                               p.tp1_r, p.tp2_r, p.stop_lookback, p.stop_buf);
+                      })});
+    orders.push_back({"by-end", by([](const Params& p) {
+                        return std::make_tuple(p.bias, p.win_start + p.win_len, p.win_start,
+                                               p.min_gap, p.stop_lookback, p.stop_buf, p.tp1_r,
+                                               p.tp2_r);
+                      })});
+    orders.push_back({"gap-first", by([](const Params& p) {
+                        return std::make_tuple(p.bias, p.min_gap, p.win_start, p.win_len,
+                                               p.stop_lookback, p.stop_buf, p.tp1_r, p.tp2_r);
+                      })});
+    orders.push_back({"tp2-outer", by([](const Params& p) {
+                        return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap,
+                                               p.tp2_r, p.stop_lookback, p.stop_buf, p.tp1_r);
+                      })});
+    orders.push_back({"tp2-tp1", by([](const Params& p) {
+                        return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap,
+                                               p.tp2_r, p.tp1_r, p.stop_lookback, p.stop_buf);
+                      })});
+    orders.push_back({"tp2-pre-gap", by([](const Params& p) {
+                        return std::make_tuple(p.bias, p.win_start, p.win_len, p.tp2_r,
+                                               p.min_gap, p.stop_lookback, p.stop_buf, p.tp1_r);
+                      })});
+    orders.push_back({"tp2-first", by([](const Params& p) {
+                        return std::make_tuple(p.bias, p.tp2_r, p.win_start, p.win_len,
+                                               p.min_gap, p.stop_lookback, p.stop_buf, p.tp1_r);
+                      })});
+  }
+  std::printf("%zu variants, every %d%s of %zu sessions, warp %d\n\n", grid.size(), stride,
+              stride == 1 ? "st" : "th", bars.num_sessions(), warp);
+  std::printf("%-12s %14s %14s %14s %9s %9s %10s %10s\n", "order", "useful", "lockstep",
+              "serialised", "eff lock", "eff ser", "pred lock", "pred ser");
+  double base_lock = 0, base_ser = 0;
+  for (const auto& [name, order] : orders) {
+    const auto t = std::chrono::steady_clock::now();
+    const DivergenceModel m = model_divergence(bars, grid, order, warp, stride);
+    if (base_lock == 0) { base_lock = m.lockstep; base_ser = m.serialised; }
+    std::printf("%-12s %14.4g %14.4g %14.4g %8.1f%% %8.1f%% %9.2fx %9.2fx   (%.1fs)\n", name,
+                m.useful, m.lockstep, m.serialised, 100 * m.efficiency_lockstep(),
+                100 * m.efficiency_serialised(), base_lock / m.lockstep, base_ser / m.serialised,
+                seconds_since(t));
+  }
+  std::printf("\nuseful = iterations each lane needs; lockstep / serialised = iterations the warp"
+              "\nspends under each model. pred = predicted kernel speed-up vs grid order.\n");
+  return 0;
+}
+
 int cmd_bench_prims(const Args& a) {
   std::vector<size_t> sizes = {size_t(1) << 16, size_t(1) << 20, size_t(1) << 24, size_t(1) << 26};
   std::printf("GPU: %s\n%s", gpu_device_name().c_str(), bench_prims(sizes, int(a.num("reps", 20))).c_str());
@@ -377,6 +446,7 @@ void usage() {
       "            [--fused]     (GPU single-loop strategy: an experiment, 0.81x, same bits)\n"
       "  gbt bench [--data bars.gbt] [--variants 4096] [--backends cpu1,cpu,gpu-naive,gpu] [--block 128] [--no-sort] [--fused] [--json]\n"
       "  gbt bench-prims [--reps 20]\n"
+      "  gbt divergence [--data bars.gbt] [--grid default] [--every 1] [--warp 32]\n"
       "  gbt lucid --r <trades.csv|r.txt> [--target 3000] [--max-dd 2000] [--static] [--no-lock]\n"
       "            [--daily-limit 0] [--cost 0] [--days 60] [--risk 50:1000:50] [--paths 100000] [--cpu]\n\n"
       "Without --data, sweep and bench use synthetic sessions.");
@@ -392,6 +462,7 @@ int main(int argc, char** argv) {
     if (a.cmd == "sweep") return cmd_sweep(a);
     if (a.cmd == "bench") return cmd_bench(a);
     if (a.cmd == "bench-prims") return cmd_bench_prims(a);
+    if (a.cmd == "divergence") return cmd_divergence(a);
     if (a.cmd == "lucid") return cmd_lucid(a);
     usage();
     return a.cmd.empty() || a.cmd == "help" || a.cmd == "--help" ? 0 : 1;

@@ -29,7 +29,7 @@ what changed, and which number moved.
 |---|---|
 | Data | 3.44M one-minute bars, 2019-01-02 to 2026-11-12, cut into 2,013 New York sessions |
 | Engines | 1 CPU thread, 16-thread pool, naive GPU kernel, shared-memory GPU kernel |
-| Correctness | 43 tests; every GPU configuration must match the CPU checksum to the bit |
+| Correctness | 46 tests; every GPU configuration must match the CPU checksum to the bit |
 | Engine speed-up | 2.6M sims/s (1 thread), 22M (16 threads), 86M (naive GPU), **580M-820M (tuned GPU)** |
 | Primitives | hand-written single-pass scan at **0.92-1.02x hipCUB** and ~100% of measured peak bandwidth |
 | Profiler | Perfetto timeline, per-kernel GB/s vs a *measured* 174 GB/s peak, Linux `perf_event` counters |
@@ -144,6 +144,25 @@ the wall time. The profiler now times the host side of a sweep too
 
 `--no-sort` keeps the old order, and `scripts/ab-sort.sh` alternates the two on one binary
 (`results/ab-sort.txt`).
+
+**A divergence model, because the hardware counters are locked.** Under WSL2, Nsight
+Compute refuses to read the GPU's counters without a driver setting, so `gbt divergence`
+estimates warp efficiency on the CPU instead. It replays every (variant, sampled session)
+with an instrumented copy of the strategy that counts its loop iterations. Each warp of 32
+consecutive variants then costs either its slowest lane (*lockstep*) or its longest scan
+plus the longest trade per distinct entry bar (*serialised*, lanes that enter later wait for
+the group before them). Its first job was to predict a number already measured:
+
+| order (default grid, every 4th session) | warp efficiency | predicted vs grid order | measured |
+|---|---|---|---|
+| grid order | 49-57% | 1.00x | 1.00x |
+| sorted | 77% | 1.35x (lockstep) to 1.55x (serialised) | **1.43x** |
+
+The measurement falls inside the model's bracket, so it can rank candidate orders in two
+seconds of CPU time before anything runs on the GPU (`--explore`,
+`results/divergence-model.txt`). It also accounts for the failed experiment below: once
+sorted, the two models differ by 1%, so a single loop could save at most ~1% of iterations
+while costing more per iteration.
 
 **A follow-up that failed: one loop instead of two.** The strategy nests trade management
 inside the entry scan, so I expected lanes that entered on different bars to run their trades
@@ -287,7 +306,7 @@ The tool's most useful output was measuring how much of an apparent edge is sear
 ```bash
 # Ubuntu 24.04 (native or WSL2), NVIDIA GPU:
 sudo bash scripts/setup-wsl.sh            # gcc, CMake, GoogleTest, CUDA 12.8, HIP headers
-bash scripts/build.sh NVIDIA build        # builds and runs the 43 tests
+bash scripts/build.sh NVIDIA build        # builds and runs the 46 tests
 # AMD GPU with ROCm installed:  bash scripts/build.sh AMD build
 # No GPU:                       bash scripts/build.sh OFF build
 
@@ -295,6 +314,7 @@ bash scripts/build.sh NVIDIA build        # builds and runs the 43 tests
 ./build/gbt bench --data bars.gbt --variants 8192
 ./build/gbt sweep --data bars.gbt --grid default --trace trace.json
 ./build/gbt bench-prims
+./build/gbt divergence --data bars.gbt --every 4 --explore   # CPU-only warp-efficiency model
 ./build/gbt lucid --r trades.txt --target 3000 --max-dd 2000 --risk 100:800:50
 python3 scripts/tune.py --gbt build/gbt --data bars.gbt
 ```

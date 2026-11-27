@@ -54,8 +54,19 @@ GBT_HD inline bool is_trade(float r) { return r == r; }  // false only for NaN
 // Simulates one session for one parameter set. Pointers point at the 09:30 bar;
 // each array holds kSessionMinutes bars. Returns the day's result in R (risk units
 // of the full position), or NaN if no trade was taken.
+// Loop-iteration counts of one simulate_session() call, for the divergence model
+// (gbt divergence). Filled only by simulate_session<true>; the default <false>
+// instantiation compiles the counting away entirely.
+struct StepCount {
+  int scan = 0;     // iterations of the entry-scan loop
+  int manage = 0;   // iterations of the trade-management loop
+  int entry = -1;   // bar the trade opened on, -1 if none
+};
+
+template <bool kCount = false>
 GBT_HD inline float simulate_session(const float* o, const float* h, const float* l,
-                                     const float* c, const Params& p) {
+                                     const float* c, const Params& p,
+                                     StepCount* steps = nullptr) {
   const int n = kSessionMinutes;
 
   int dir15 = 0;
@@ -74,6 +85,7 @@ GBT_HD inline float simulate_session(const float* o, const float* h, const float
   float bear_top = 0.f, bull_bot = 0.f;
 
   for (int j = 2; j < end; ++j) {
+    if constexpr (kCount) ++steps->scan;
     if (h[j] < l[j - 2] && l[j - 2] - h[j] >= p.min_gap) { bear_on = true; bear_top = l[j - 2]; }
     if (l[j] > h[j - 2] && l[j] - h[j - 2] >= p.min_gap) { bull_on = true; bull_bot = h[j - 2]; }
 
@@ -98,7 +110,9 @@ GBT_HD inline float simulate_session(const float* o, const float* h, const float
     const float tp2 = entry + dir * p.tp2_r * risk;
     bool full = true;  // both halves still open
     float r = 0.f;
+    if constexpr (kCount) steps->entry = j;
     for (int k = j + 1; k < n; ++k) {
+      if constexpr (kCount) ++steps->manage;
       const bool stop_hit = dir > 0 ? l[k] <= stop : h[k] >= stop;
       if (stop_hit) {
         const float exit = stop - dir * kStopSlip;

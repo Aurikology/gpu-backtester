@@ -59,6 +59,27 @@ std::vector<VariantResult> run_sweep_gpu(const BarSeries& bars, const std::vecto
 std::vector<float> trades_of(const BarSeries& bars, const Params& p, size_t first_session = 0,
                              size_t last_session = SIZE_MAX);
 
+// The order the GPU runs variants in (sort_variants): bias, window, gap, stop outer,
+// targets inner, so neighbouring lanes take the same branches. order[i] = grid index.
+std::vector<uint32_t> divergence_order(const std::vector<Params>& grid);
+
+// Software model of warp divergence for one launch order (no hardware counters needed).
+// Lanes are consecutive variants in `order`, `warp` lanes per warp, one warp per
+// (session, chunk). Per session, lane costs come from simulate_session<true>:
+//   lockstep    a warp costs its slowest lane's scan + manage iterations
+//   serialised  a warp costs its longest scan plus, for each distinct entry bar, the
+//               longest trade opened on that bar (lanes that enter together run
+//               together; a group that enters later waits for the earlier one)
+//   useful      sum of every lane's own iterations / warp width
+struct DivergenceModel {
+  double lockstep = 0, serialised = 0, useful = 0;  // totals over sampled warps
+  double efficiency_lockstep() const { return lockstep > 0 ? useful / lockstep : 0; }
+  double efficiency_serialised() const { return serialised > 0 ? useful / serialised : 0; }
+};
+DivergenceModel model_divergence(const BarSeries& bars, const std::vector<Params>& grid,
+                                 const std::vector<uint32_t>& order, int warp = 32,
+                                 int session_stride = 1, int threads = 0);
+
 // Order-independent fingerprint of a sweep, used to prove two backends agree.
 uint64_t checksum(const std::vector<VariantResult>& results);
 

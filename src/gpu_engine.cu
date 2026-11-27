@@ -90,24 +90,6 @@ __global__ void metrics_kernel(const float* __restrict__ r, int V, int S, size_t
   out[v] = res;
 }
 
-// Divergence-aware order. A warp runs until its slowest lane finishes, so lanes should
-// share as much control flow as possible. In make_grid() the bias filter is the innermost
-// axis, so every warp mixes all three filters: different early exits, different entry
-// bars, opposite trade directions. Sorting by the parameters that decide *whether and
-// where* a trade opens (bias, window, gap, stop) and leaving only the targets, which
-// decide *when it closes*, to vary inside a warp keeps lanes on the same path longer.
-std::vector<uint32_t> divergence_order(const std::vector<Params>& grid) {
-  std::vector<uint32_t> idx(grid.size());
-  for (size_t i = 0; i < idx.size(); ++i) idx[i] = uint32_t(i);
-  auto key = [](const Params& p) {
-    return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap, p.stop_lookback,
-                           p.stop_buf, p.tp1_r, p.tp2_r);
-  };
-  std::stable_sort(idx.begin(), idx.end(),
-                   [&](uint32_t a, uint32_t b) { return key(grid[a]) < key(grid[b]); });
-  return idx;
-}
-
 std::vector<VariantResult> run_sweep_gpu_ordered(const BarSeries& bars,
                                                  const std::vector<Params>& grid,
                                                  const SweepOptions& opt);

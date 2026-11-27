@@ -4,6 +4,8 @@
 #include <cstring>
 #include <stdexcept>
 #include <thread>
+#include <tuple>
+#include <utility>
 
 #include "gbt/profiler.hpp"
 
@@ -96,6 +98,81 @@ std::vector<float> trades_of(const BarSeries& b, const Params& p, size_t first, 
     if (is_trade(x)) r.push_back(x);
   }
   return r;
+}
+
+// Divergence-aware order. A warp runs until its slowest lane finishes, so lanes should
+// share as much control flow as possible. In make_grid() the bias filter is the innermost
+// axis, so every warp mixes all three filters: different early exits, different entry
+// bars, opposite trade directions. Sorting by the parameters that decide *whether and
+// where* a trade opens (bias, window, gap, stop) and leaving only the targets, which
+// decide *when it closes*, to vary inside a warp keeps lanes on the same path longer.
+std::vector<uint32_t> divergence_order(const std::vector<Params>& grid) {
+  std::vector<uint32_t> idx(grid.size());
+  for (size_t i = 0; i < idx.size(); ++i) idx[i] = uint32_t(i);
+  auto key = [](const Params& p) {
+    return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap, p.stop_lookback,
+                           p.stop_buf, p.tp1_r, p.tp2_r);
+  };
+  std::stable_sort(idx.begin(), idx.end(),
+                   [&](uint32_t a, uint32_t b) { return key(grid[a]) < key(grid[b]); });
+  return idx;
+}
+
+DivergenceModel model_divergence(const BarSeries& b, const std::vector<Params>& grid,
+                                 const std::vector<uint32_t>& order, int warp,
+                                 int session_stride, int threads) {
+  if (threads <= 0) threads = int(std::max(1u, std::thread::hardware_concurrency()));
+  const size_t S = b.num_sessions(), V = order.size(), W = size_t(std::max(1, warp));
+  const size_t stride = size_t(std::max(1, session_stride));
+  std::vector<DivergenceModel> part(static_cast<size_t>(threads));
+  std::vector<std::thread> pool;
+  for (int t = 0; t < threads; ++t) {
+    pool.emplace_back([&, t] {
+      DivergenceModel m;
+      std::vector<StepCount> lane(W);
+      std::vector<std::pair<int, int>> groups;  // (entry bar, manage iterations)
+      for (size_t s = size_t(t) * stride; s < S; s += stride * size_t(threads)) {
+        const size_t i = size_t(b.sessions[s].begin);
+        const float *o = &b.open[i], *h = &b.high[i], *l = &b.low[i], *c = &b.close[i];
+        for (size_t v0 = 0; v0 < V; v0 += W) {
+          const size_t n = std::min(W, V - v0);
+          int max_total = 0, max_scan = 0;
+          long sum = 0;
+          groups.clear();
+          for (size_t k = 0; k < n; ++k) {
+            lane[k] = StepCount{};
+            simulate_session<true>(o, h, l, c, grid[order[v0 + k]], &lane[k]);
+            const int total = lane[k].scan + lane[k].manage;
+            max_total = std::max(max_total, total);
+            max_scan = std::max(max_scan, lane[k].scan);
+            sum += total;
+            if (lane[k].entry >= 0) groups.push_back({lane[k].entry, lane[k].manage});
+          }
+          std::sort(groups.begin(), groups.end());
+          long ser = max_scan;
+          for (size_t g = 0; g < groups.size();) {
+            int longest = 0;
+            const int e = groups[g].first;
+            for (; g < groups.size() && groups[g].first == e; ++g)
+              longest = std::max(longest, groups[g].second);
+            ser += longest;
+          }
+          m.lockstep += double(max_total);
+          m.serialised += double(ser);
+          m.useful += double(sum) / double(W);
+        }
+      }
+      part[size_t(t)] = m;
+    });
+  }
+  for (auto& th : pool) th.join();
+  DivergenceModel total;
+  for (const auto& m : part) {
+    total.lockstep += m.lockstep;
+    total.serialised += m.serialised;
+    total.useful += m.useful;
+  }
+  return total;
 }
 
 uint64_t checksum(const std::vector<VariantResult>& results) {

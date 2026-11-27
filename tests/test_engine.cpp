@@ -76,6 +76,50 @@ TEST(Engine, GpuFusedLoopMatchesCpu) {
             checksum(run(Backend::Cpu1)));
 }
 
+// A one-lane warp cannot diverge: every model must equal the useful work exactly.
+TEST(DivergenceModel, OneLaneWarpsHaveNoWaste) {
+  const auto grid = make_grid(GridSize::Small);
+  const auto m = model_divergence(bars(), grid, divergence_order(grid), 1, 1, 2);
+  EXPECT_GT(m.useful, 0.0);
+  EXPECT_EQ(m.lockstep, m.useful);
+  EXPECT_EQ(m.serialised, m.useful);
+}
+
+// Waste can only grow with warp width, serialised >= lockstep >= useful, and the
+// sorted order must beat the grid order (that is the whole point of the sort).
+TEST(DivergenceModel, BoundsAndSortedBeatsGridOrder) {
+  const auto grid = make_grid(GridSize::Small);
+  std::vector<uint32_t> plain(grid.size());
+  for (size_t i = 0; i < plain.size(); ++i) plain[i] = uint32_t(i);
+  const auto g = model_divergence(bars(), grid, plain, 32, 1, 2);
+  const auto s = model_divergence(bars(), grid, divergence_order(grid), 32, 1, 2);
+  for (const auto& m : {g, s}) {
+    EXPECT_GE(m.serialised, m.lockstep);
+    EXPECT_GE(m.lockstep, m.useful);
+  }
+  EXPECT_DOUBLE_EQ(g.useful, s.useful);  // same work, different packing
+  EXPECT_LT(s.lockstep, g.lockstep);
+}
+
+// Counting must not change the answer.
+TEST(DivergenceModel, CountingLeavesResultsUnchanged) {
+  const auto grid = make_grid(GridSize::Small);
+  const BarSeries& b = bars();
+  for (size_t s = 0; s < 40; ++s) {
+    const size_t i = size_t(b.sessions[s].begin);
+    for (const Params& p : grid) {
+      StepCount st;
+      const float x = simulate_session(&b.open[i], &b.high[i], &b.low[i], &b.close[i], p);
+      const float y = simulate_session<true>(&b.open[i], &b.high[i], &b.low[i], &b.close[i], p, &st);
+      ASSERT_TRUE((x == y) || (x != x && y != y));
+      ASSERT_EQ(st.entry >= 0, is_trade(x));  // an entry always produces a result
+      if (st.entry >= 0) {
+        ASSERT_GE(st.manage, 1);
+      }
+    }
+  }
+}
+
 TEST(Engine, MetricsAgreeWithTheTradeList) {
   const auto grid = make_grid(GridSize::Small);
   const auto res = run(Backend::Cpu1);
