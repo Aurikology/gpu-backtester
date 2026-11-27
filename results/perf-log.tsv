@@ -10,3 +10,5 @@ date	commit	dirty	gpu	sweep_default_s	sim_shared_ms	full_grid_checksum	note
 2026-11-27	873a0aa	yes	NVIDIA	0.49	251.17	a6bb0fa189bff7ee	divergence-model
 2026-11-27	f1731bc	yes	NVIDIA	0.49	251.05	a6bb0fa189bff7ee	tp2-outer-order
 2026-11-27	0b7d46e	yes	NVIDIA	0.52	253.29	a6bb0fa189bff7ee	scan-share-model
+2026-11-27	893e11f	yes	NVIDIA	0.35	130.24	a6bb0fa189bff7ee	shared-scan
+2026-11-27	893e11f	yes	NVIDIA	0.38	130.06	a6bb0fa189bff7ee	shared-scan-final

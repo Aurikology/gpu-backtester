@@ -9,7 +9,7 @@ SRC=$(cd "$(dirname "$0")/.." && pwd)
 DATA=${DATA:-$SRC/data/nq_2019_2026.gbt}
 DATA_ARG=()
 [ -f "$DATA" ] && DATA_ARG=(--data "$DATA")
-k() { "$BUILD/gbt" sweep "${DATA_ARG[@]}" --grid "$GRID" --top 1 "$@" | awk '$1=="sim_shared"{print $4}'; }
+k() { "$BUILD/gbt" sweep "${DATA_ARG[@]}" --grid "$GRID" --top 1 "$@" | awk '$1=="sim_shared"||$1=="sim_grouped"{t+=$4} END{print t}'; }
 "$BUILD/gbt" sweep "${DATA_ARG[@]}" --grid "$GRID" --top 1 >/dev/null  # warm-up
 for i in $(seq "${RUNS:-5}"); do
   printf 'run %d  grid-order %8s ms   sorted %8s ms\n' "$i" "$(k --no-sort)" "$(k)"

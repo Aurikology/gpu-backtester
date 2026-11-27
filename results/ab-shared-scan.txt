@@ -1,0 +1,27 @@
+# Shared entry scan (sim_grouped) vs one scan per variant (sim_shared, --no-share).
+# RTX 4050, one binary, arms alternate. Kernel ms, then sweep wall seconds.
+# First attempt used a fixed 1,024-entry shared array (20 KB/block): 0.71x from lost
+# occupancy. Sizing it to the block (2.5 KB at 128 threads) gives the numbers below.
+## default grid
+run 1  per-variant 286.03 ms   shared 130.93 ms
+run 2  per-variant 251.34 ms   shared 130.62 ms
+run 3  per-variant 251.7 ms   shared 131.53 ms
+run 4  per-variant 252.26 ms   shared 134.27 ms
+run 5  per-variant 251.7 ms   shared 131.83 ms
+wall 1  per-variant 0.47 s   shared 0.34 s
+wall 2  per-variant 0.53 s   shared 0.45 s
+checksum per-variant a6bb0fa189bff7ee  (0.332827 s end to end)
+checksum shared      a6bb0fa189bff7ee  (0.208289 s end to end)
+## large grid
+run 1  per-variant 1399.57 ms   shared 727.37 ms
+run 2  per-variant 1400.21 ms   shared 724.87 ms
+run 3  per-variant 1418.69 ms   shared 735.77 ms
+wall 1  per-variant 1.94 s   shared 1.20 s
+wall 2  per-variant 1.84 s   shared 1.20 s
+checksum per-variant a72cfddb9ccc5ff1  (1.703652 s end to end)
+checksum shared      a72cfddb9ccc5ff1  (1.056911 s end to end)
+## block size, default grid, shared kernel ms
+block 64  199.41 ms
+block 128  134.54 ms
+block 256  126.28 ms
+block 512  141.68 ms

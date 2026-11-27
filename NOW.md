@@ -10,6 +10,11 @@ _Last updated 2026-11-27 (improve loop, unattended hour)._
   (`a6bb0fa189bff7ee`, `a72cfddb9ccc5ff1`). End to end ~0.5 s, ~35x the 16-thread CPU.
   - sort itself vs grid order: 1.43x (`results/ab-sort.txt`)
   - tp2 ahead of the stop keys: a further 1.0-1.3% (`results/ab-tp2-order.txt`)
+- **Shared entry scan (default since 2026-11-27, `sim_grouped`):** scan once per
+  (bias, window, gap, stop) group, manage per variant. Kernel 252 -> 131 ms default (1.92x),
+  1,400 -> 727 ms large (1.93x), checksums unchanged (`results/ab-shared-scan.txt`). Sweep wall
+  0.34-0.45 s default, 1.2 s large. Uses group-major order (the tp2 key only applies with
+  `--no-share`). Block 256 measured 6% faster than 128: re-run the tuner.
 - **Single-loop kernel: 0.81x, kept off** (`--fused`, `results/ab-fused.txt`).
 - **Divergence model** `gbt divergence [--explore]`: CPU replay of loop counts per warp. Predicted
   the sort at 1.35-1.55x vs 1.43x measured; predicted tp2-outer at 3.4% vs ~1.2% measured. Ranks
@@ -38,7 +43,7 @@ the software model can be checked against it.
 
 1. **Run on AMD Developer Cloud** (MI300X): wave64 numbers + rocprofv3. Costs money; price unchecked.
 2. **Small ROCm upstream PR** (rocPRIM/hipCUB docs or tests): free, but he writes and sends it.
-3. **Kernel: share the entry scan (measured ceiling ~2x).** 62% of useful iterations are the
+3. **DONE 2026-11-27 (1.92x), kept for the record:** share the entry scan (measured ceiling ~2x). 62% of useful iterations are the
    entry scan, and the scan never reads tp1/tp2, so each of the 13,824 distinct scans
    (default grid) is repeated by 11 variants. Sharing it removes at most 56.7% of iterations
    (`results/scan-share.txt`; large grid 56.4%). Packing tweaks are capped at ~1.25x, so this is

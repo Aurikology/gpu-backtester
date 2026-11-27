@@ -36,16 +36,16 @@ if [ "$GPU" != "OFF" ]; then
   for i in $(seq "$RUNS"); do
     "$GBT" sweep "${DATA_ARG[@]}" --grid default --top 1 > /tmp/gbt-sweep.txt 2>/dev/null
     s=$(sed -n 's/.* in \([0-9.]*\)s = .*/\1/p' /tmp/gbt-sweep.txt)
-    k=$(awk '$1=="sim_shared"{print $4}' /tmp/gbt-sweep.txt)
+    k=$(awk '$1=="sim_shared"||$1=="sim_grouped"{t+=$4} END{print t}' /tmp/gbt-sweep.txt)
     best=$(awk -v a="$best" -v b="$s" 'BEGIN{print (b<a)?b:a}')
     kbest=$(awk -v a="$kbest" -v b="$k" 'BEGIN{print (b<a)?b:a}')
-    echo "   run $i: ${s}s wall, sim_shared ${k} ms"
+    echo "   run $i: ${s}s wall, sim kernel ${k} ms"
   done
   SWEEP_S=$best
   KERNEL_MS=$kbest
   SWEEP_SUM=$("$GBT" bench "${DATA_ARG[@]}" --grid default --variants 1000000 --backends gpu --json |
               sed -n 's/.*"checksum":"\([0-9a-f]*\)".*/\1/p')
-  echo "   best ${SWEEP_S}s wall, sim_shared ${KERNEL_MS} ms, full-grid checksum $SWEEP_SUM"
+  echo "   best ${SWEEP_S}s wall, sim kernel ${KERNEL_MS} ms, full-grid checksum $SWEEP_SUM"
   # The full-grid checksum is the correctness anchor for the default grid on this data:
   # a speed change that moves it changed the answers, not just the speed.
   if [ -n "${EXPECT_SUM:-}" ] && [ "$SWEEP_SUM" != "$EXPECT_SUM" ]; then

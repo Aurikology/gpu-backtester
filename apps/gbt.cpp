@@ -137,6 +137,7 @@ int cmd_sweep(const Args& a) {
   opt.block_size = int(a.num("block", 128));
   opt.sort_variants = !a.has("no-sort");
   opt.fused_loop = a.has("fused");
+  opt.share_scan = !a.has("no-share");
   Timeline tl;
   opt.timeline = &tl;
   const size_t split = oos_split(bars.num_sessions(), opt.oos_fraction);
@@ -253,6 +254,7 @@ int cmd_bench(const Args& a) {
     opt.block_size = int(a.num("block", 128));
     opt.sort_variants = !a.has("no-sort");
     opt.fused_loop = a.has("fused");
+    opt.share_scan = !a.has("no-share");
     if ((opt.backend == Backend::GpuNaive || opt.backend == Backend::GpuShared) && !gpu_available()) {
       if (!json) std::printf("%-10s (no GPU)\n", name.c_str());
       continue;
@@ -459,7 +461,8 @@ void usage() {
       "            [--oos 0.3] [--top 15] [--min-trades 50] [--trace trace.json] [--save-best-r r.txt]\n"
       "            [--no-sort]   (run variants in grid order: the pre-divergence-fix baseline)\n"
       "            [--fused]     (GPU single-loop strategy: an experiment, 0.81x, same bits)\n"
-      "  gbt bench [--data bars.gbt] [--variants 4096] [--backends cpu1,cpu,gpu-naive,gpu] [--block 128] [--no-sort] [--fused] [--json]\n"
+      "            [--no-share]  (every variant runs its own entry scan: the pre-shared-scan kernel)\n"
+      "  gbt bench [--data bars.gbt] [--variants 4096] [--backends cpu1,cpu,gpu-naive,gpu] [--block 128] [--no-sort] [--fused] [--no-share] [--json]\n"
       "  gbt bench-prims [--reps 20]\n"
       "  gbt divergence [--data bars.gbt] [--grid default] [--every 1] [--warp 32]\n"
       "  gbt lucid --r <trades.csv|r.txt> [--target 3000] [--max-dd 2000] [--static] [--no-lock]\n"

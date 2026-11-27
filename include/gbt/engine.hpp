@@ -42,6 +42,9 @@ struct SweepOptions {
   // nested-loop simulate_session(). Same bits; the CPU always runs the nested one.
   // Off: measured 0.81x on both grids (results/ab-fused.txt). Kept as an ablation.
   bool fused_loop = false;
+  // GpuShared + sort_variants: run each (bias, window, gap, stop) group's entry scan once
+  // and manage every variant's trade from it (sim_grouped). Same bits as simulate_session.
+  bool share_scan = true;
   Timeline* timeline = nullptr;               // optional profiling
 };
 

@@ -8,9 +8,9 @@ C++20 and **HIP**, AMD's GPU programming model. The same source compiles for AMD
 RTX 4050 laptop GPU.
 
 **Headline:** 152,064 strategy variants x 2,013 trading days (306 million session
-simulations) in **~0.5 s**, about **35x a 16-thread CPU** (16.9 s), with **bit-identical
-results** on every backend. The larger grid, 855,360 variants (1.72 billion
-simulations), runs in 1.9 s.
+simulations) in **0.34-0.45 s**, about **40-50x a 16-thread CPU** (16.9 s), with
+**bit-identical results** on every backend. The larger grid, 855,360 variants (1.72 billion
+simulations), runs in 1.2 s. About half of each default run is now fixed GPU start-up.
 
 It answers two questions for a discretionary trader:
 1. *Which version of my rules actually works?* A parameter sweep, ranked on 2019-2024 and
@@ -29,7 +29,7 @@ what changed, and which number moved.
 |---|---|
 | Data | 3.44M one-minute bars, 2019-01-02 to 2026-11-12, cut into 2,013 New York sessions |
 | Engines | 1 CPU thread, 16-thread pool, naive GPU kernel, shared-memory GPU kernel |
-| Correctness | 46 tests; every GPU configuration must match the CPU checksum to the bit |
+| Correctness | 47 tests; every GPU configuration must match the CPU checksum to the bit |
 | Engine speed-up | 2.6M sims/s (1 thread), 22M (16 threads), 86M (naive GPU), **580M-820M (tuned GPU)** |
 | Primitives | hand-written single-pass scan at **0.92-1.02x hipCUB** and ~100% of measured peak bandwidth |
 | Profiler | Perfetto timeline, per-kernel GB/s vs a *measured* 174 GB/s peak, Linux `perf_event` counters |
@@ -168,6 +168,30 @@ overstates small effects about 2.5x, so its predictions are a shortlist, not a r
 order is now the default. It also accounts for the failed experiment below: once
 sorted, the two models differ by 1%, so a single loop could save at most ~1% of iterations
 while costing more per iteration.
+
+**The model's biggest finding: most of the work was repeated.** It splits the useful
+iterations by loop: **62% are the entry scan**, and the scan never reads the targets. On
+the default grid that means 13,824 distinct scans each run by 11 variants
+(`results/scan-share.txt`). Sharing the scan removes up to 57% of the iterations, a
+ceiling near 2.3x, against ~1.25x left for any reordering. So the kernel now does it
+(`sim_grouped`): the strategy is split into `find_entry()` and `manage_trade()` (a test
+proves together they equal `simulate_session()` to the bit). One block takes one session
+and up to 128 scan groups. Phase 1: each thread runs one group's scan and leaves the entry
+in shared memory. Phase 2: the block's threads manage every variant of those groups from
+it.
+
+| grid | one scan per variant | shared scan | speed-up | checksum |
+|---|---|---|---|---|
+| default, kernel | 252 ms | 131 ms | **1.92x** | `a6bb0fa189bff7ee` both |
+| large, kernel | 1,400 ms | 727 ms | **1.93x** | `a72cfddb9ccc5ff1` both |
+| default, `gbt sweep` wall | 0.47-0.53 s | 0.34-0.45 s | | |
+| large, `gbt sweep` wall | 1.84-1.94 s | 1.20 s | | |
+
+The first version was *slower*, 0.71x. It declared a fixed 1,024-entry shared array, 20 KB
+per block against the 6 KB before, which cut how many blocks fit on each SM. Sizing it to
+the block (2.5 KB at 128 threads) turned 0.71x into 1.92x. Block 256 runs 6% faster than
+128 here (`results/ab-shared-scan.txt`), so the tuner's old winner is due a re-run.
+`--no-share` restores the per-variant kernel.
 
 **A follow-up that failed: one loop instead of two.** The strategy nests trade management
 inside the entry scan, so I expected lanes that entered on different bars to run their trades
@@ -311,7 +335,7 @@ The tool's most useful output was measuring how much of an apparent edge is sear
 ```bash
 # Ubuntu 24.04 (native or WSL2), NVIDIA GPU:
 sudo bash scripts/setup-wsl.sh            # gcc, CMake, GoogleTest, CUDA 12.8, HIP headers
-bash scripts/build.sh NVIDIA build        # builds and runs the 46 tests
+bash scripts/build.sh NVIDIA build        # builds and runs the 47 tests
 # AMD GPU with ROCm installed:  bash scripts/build.sh AMD build
 # No GPU:                       bash scripts/build.sh OFF build
 

@@ -170,3 +170,27 @@ TEST(Strategy, FusedLoopIsBitIdenticalToNested) {
   }
   EXPECT_GT(trades, size_t(1000)) << "too few trades: the comparison proves little";
 }
+
+// The shared-scan kernel computes find_entry() once per group and manage_trade() per
+// variant. Together they must equal simulate_session() to the bit, NaN for NaN.
+TEST(Strategy, SplitEntryAndManageIsBitIdentical) {
+  const BarSeries b = make_synthetic(120, 11);
+  std::vector<Params> grid = make_grid(GridSize::Small);
+  const auto def = make_grid(GridSize::Default);
+  for (size_t i = 0; i < def.size(); i += 89) grid.push_back(def[i]);
+  size_t trades = 0;
+  for (const Session& s : b.sessions) {
+    const size_t i = size_t(s.begin);
+    const float *o = &b.open[i], *h = &b.high[i], *l = &b.low[i], *c = &b.close[i];
+    for (const Params& p : grid) {
+      const float want = simulate_session(o, h, l, c, p);
+      const float got = manage_trade(h, l, c, p, find_entry(o, h, l, c, p));
+      uint32_t wb, gb;
+      std::memcpy(&wb, &want, 4);
+      std::memcpy(&gb, &got, 4);
+      ASSERT_EQ(gb, wb) << describe(p) << " session " << s.date;
+      trades += is_trade(want) ? 1 : 0;
+    }
+  }
+  EXPECT_GT(trades, size_t(1000));
+}

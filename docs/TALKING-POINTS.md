@@ -10,7 +10,7 @@ README.
 > works. Testing one rule change over seven years of minute data took seconds; testing
 > every combination took hours. So I wrote a backtester in C++ and HIP, AMD's GPU
 > language, that runs **152,064 strategy variants over 2,013 trading days in
-> half a second**, 35x faster than my 16-thread CPU version, and
+> under half a second**, 40-50x faster than my 16-thread CPU version, and
 > the GPU agrees with the CPU to the last bit. Then I built a Monte Carlo simulator on top
 > that tells me my odds of passing a prop-firm evaluation at each position size."
 
@@ -88,6 +88,18 @@ End to end it's less, 0.57 to 0.48 s, because creating the GPU context costs 0.1
 process, about as much as the kernel itself. I only know that because I made the profiler time
 the host side too; at first I'd guessed the sort was 1% and the start-up was 0.2 s.
 
+**What was the biggest speed-up after shared memory?**
+Not doing work twice. The hardware counters were locked on my laptop, so I wrote a CPU
+model that replays the strategy and counts loop iterations per warp. First I checked it
+against a number I'd already measured: it predicted my variant sort at 1.35-1.55x, and
+I'd measured 1.43x. Then it showed 62% of the work was the entry scan, and the scan
+doesn't depend on the profit targets, so every scan was being run by 11 variants. I
+split the strategy into find-entry and manage-trade, proved the two halves equal the
+original to the bit, and made each block scan once per group into shared memory and then
+manage all of that group's trades. 1.92x on the kernel, same checksums. The first
+version was actually 0.71x, because a fixed 20 KB shared array killed occupancy; sizing
+it to the block fixed that.
+
 **Did anything you tried not work?**
 Yes. I thought the nested loops (scan for an entry, then manage the trade) made lanes that
 entered on different bars run their trades one after another, so I rewrote the rules as one
@@ -128,11 +140,12 @@ The auto-tuner is the same idea automated.
 ## Resume bullets
 
 - Built a C++20/HIP GPU backtesting engine that evaluates 152,064 parameter variants over
-  7 years of 1-minute Nasdaq futures data in 0.5 s, 35x a 16-thread
+  7 years of 1-minute Nasdaq futures data in under 0.5 s, 40-50x a 16-thread
   CPU baseline, with bit-identical CPU/GPU results enforced by tests.
 - Raised kernel throughput 6.7x by staging each trading day in shared memory
   and switching to a session-major layout for coalesced writes, then a further 1.43x by
-  reordering variants to cut warp branch divergence; profiled with a custom Perfetto
+  reordering variants to cut warp divergence and 1.92x by sharing redundant entry scans
+  across variants, found with a CPU warp-efficiency model; profiled with a custom Perfetto
   timeline and measured-peak bandwidth reporting.
 - Implemented warp-shuffle reduce and a single-pass decoupled look-back scan matching hipCUB
   (0.92-1.02x, ~100% of measured bandwidth); built a GPU Monte Carlo simulator estimating

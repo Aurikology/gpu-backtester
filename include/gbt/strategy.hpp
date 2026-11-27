@@ -132,6 +132,91 @@ GBT_HD inline float simulate_session(const float* o, const float* h, const float
   return no_trade();
 }
 
+// ---- the same rules split in two, so the entry scan can be shared ----
+// find_entry() reads only bias, window, gap and stop parameters, never tp1/tp2, so every
+// variant that differs only in its targets gets the same Entry. The shared-scan kernel
+// runs it once per group and manage_trade() once per variant. manage_trade(find_entry())
+// is bit-identical to simulate_session(): the expressions are copied verbatim (tested).
+struct Entry {
+  int32_t bar = -1;  // bar the trade opened on; -1 = no trade this session
+  int32_t dir = 0;
+  float price = 0.f, stop = 0.f, risk = 0.f;
+};
+
+GBT_HD inline Entry find_entry(const float* o, const float* h, const float* l, const float* c,
+                               const Params& p) {
+  const int n = kSessionMinutes;
+  Entry none;
+  int dir15 = 0;
+  if (p.bias != 0) {
+    const float d = c[14] - o[0];
+    dir15 = d > 0.f ? 1 : (d < 0.f ? -1 : 0);
+    if (dir15 == 0) return none;
+  }
+  int start = p.win_start;
+  if (p.bias != 0 && start < 15) start = 15;
+  int end = p.win_start + p.win_len;
+  if (end > n - 1) end = n - 1;
+  bool bear_on = false, bull_on = false;
+  float bear_top = 0.f, bull_bot = 0.f;
+  for (int j = 2; j < end; ++j) {
+    if (h[j] < l[j - 2] && l[j - 2] - h[j] >= p.min_gap) { bear_on = true; bear_top = l[j - 2]; }
+    if (l[j] > h[j - 2] && l[j] - h[j - 2] >= p.min_gap) { bull_on = true; bull_bot = h[j - 2]; }
+    int dir = 0;
+    if (bear_on && c[j] > bear_top) { dir = 1; bear_on = false; }
+    else if (bull_on && c[j] < bull_bot) { dir = -1; bull_on = false; }
+    if (dir == 0 || j < start) continue;
+    if (p.bias == 1 && dir != dir15) continue;
+    if (p.bias == 2 && dir != -dir15) continue;
+    const float entry = c[j];
+    int first = j - p.stop_lookback + 1;
+    if (first < 0) first = 0;
+    float swing = dir > 0 ? l[j] : h[j];
+    for (int k = first; k < j; ++k) swing = dir > 0 ? fminf(swing, l[k]) : fmaxf(swing, h[k]);
+    const float stop = dir > 0 ? swing - p.stop_buf : swing + p.stop_buf;
+    const float risk = dir > 0 ? entry - stop : stop - entry;
+    if (risk < kMinRisk) continue;
+    Entry e;
+    e.bar = j;
+    e.dir = dir;
+    e.price = entry;
+    e.stop = stop;
+    e.risk = risk;
+    return e;
+  }
+  return none;
+}
+
+GBT_HD inline float manage_trade(const float* h, const float* l, const float* c, const Params& p,
+                                 const Entry& e) {
+  const int n = kSessionMinutes;
+  if (e.bar < 0) return no_trade();
+  const int dir = e.dir;
+  const float entry = e.price;
+  const float risk = e.risk;
+  float stop = e.stop;
+  const float tp1 = entry + dir * p.tp1_r * risk;
+  const float tp2 = entry + dir * p.tp2_r * risk;
+  bool full = true;
+  float r = 0.f;
+  for (int k = e.bar + 1; k < n; ++k) {
+    const bool stop_hit = dir > 0 ? l[k] <= stop : h[k] >= stop;
+    if (stop_hit) {
+      const float exit = stop - dir * kStopSlip;
+      const float rr = dir * (exit - entry) / risk;
+      return r + (full ? rr : 0.5f * rr);
+    }
+    if (full && (dir > 0 ? h[k] >= tp1 : l[k] <= tp1)) {
+      r += 0.5f * p.tp1_r;
+      full = false;
+      stop = entry;
+    }
+    if (!full && (dir > 0 ? h[k] >= tp2 : l[k] <= tp2)) return r + 0.5f * p.tp2_r;
+  }
+  const float rr = dir * (c[n - 1] - entry) / risk;
+  return r + (full ? rr : 0.5f * rr);
+}
+
 // The same rules as simulate_session(), restructured as ONE loop over bars with a
 // two-state machine (scanning for an entry / managing the open trade), for the GPU.
 //

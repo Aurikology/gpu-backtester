@@ -73,6 +73,43 @@ __global__ void sim_shared(const float* __restrict__ o, const float* __restrict_
                                                  : simulate_session(so, sh, sl, sc, grid[v]);
 }
 
+// v3, shared scan. Variants are sorted so each scan group (same bias, window, gap, stop;
+// only the targets differ) is contiguous; gbegin[g] is group g's first variant. One block
+// per (session, up to blockDim groups):
+//   phase 1  thread t runs group g0+t's entry scan once and leaves the Entry in shared memory
+//   phase 2  the block's threads stride over all of those groups' variants and manage each
+//            trade from its group's Entry
+// The scan, 62% of the useful work, now runs once per group instead of once per variant.
+constexpr int kMaxBlock = 1024;
+__global__ void sim_grouped(const float* __restrict__ o, const float* __restrict__ h,
+                            const float* __restrict__ l, const float* __restrict__ c,
+                            const Session* __restrict__ sess, const Params* __restrict__ grid,
+                            const int* __restrict__ gbegin, const int* __restrict__ vgroup,
+                            int g_lo, int g_hi, int v_lo, int VB, float* __restrict__ out) {
+  __shared__ float so[kSessionMinutes], sh[kSessionMinutes], sl[kSessionMinutes],
+      sc[kSessionMinutes];
+  // Sized at launch to blockDim entries: a fixed kMaxBlock array (20 KB) cut occupancy.
+  extern __shared__ Entry se[];
+  const int s = blockIdx.y;
+  const size_t b = size_t(sess[s].begin);
+  for (int k = threadIdx.x; k < kSessionMinutes; k += blockDim.x) {
+    so[k] = o[b + k];
+    sh[k] = h[b + k];
+    sl[k] = l[b + k];
+    sc[k] = c[b + k];
+  }
+  __syncthreads();
+  const int g_first = g_lo + int(blockIdx.x) * int(blockDim.x);
+  const int g = g_first + int(threadIdx.x);
+  if (g < g_hi) se[threadIdx.x] = find_entry(so, sh, sl, sc, grid[gbegin[g]]);
+  __syncthreads();
+  const int g_last = min(g_first + int(blockDim.x), g_hi);
+  if (g_first >= g_last) return;
+  for (int v = gbegin[g_first] + int(threadIdx.x); v < gbegin[g_last]; v += int(blockDim.x))
+    out[size_t(s) * size_t(VB) + size_t(v - v_lo)] =
+        manage_trade(sh, sl, sc, grid[v], se[vgroup[v] - g_first]);
+}
+
 // One thread per variant walks its sessions in date order (the equity curve is a
 // running sum, so order matters). stride_v/stride_s describe the result layout:
 // session-major (1, V) makes a warp's reads contiguous; variant-major (S, 1) does not.
@@ -92,7 +129,25 @@ __global__ void metrics_kernel(const float* __restrict__ r, int V, int S, size_t
 
 std::vector<VariantResult> run_sweep_gpu_ordered(const BarSeries& bars,
                                                  const std::vector<Params>& grid,
-                                                 const SweepOptions& opt);
+                                                 const SweepOptions& opt,
+                                                 const std::vector<int>* gbegin = nullptr);
+
+namespace {
+auto scan_key(const Params& p) {
+  return std::make_tuple(p.bias, p.win_start, p.win_len, p.min_gap, p.stop_lookback, p.stop_buf);
+}
+// Group-major order for the shared scan: scan groups contiguous, tp2 then tp1 inside.
+std::vector<uint32_t> scan_group_order(const std::vector<Params>& grid) {
+  std::vector<uint32_t> idx(grid.size());
+  for (size_t i = 0; i < idx.size(); ++i) idx[i] = uint32_t(i);
+  std::stable_sort(idx.begin(), idx.end(), [&](uint32_t a, uint32_t b) {
+    const Params &x = grid[a], &y = grid[b];
+    return std::tuple_cat(scan_key(x), std::make_tuple(x.tp2_r, x.tp1_r)) <
+           std::tuple_cat(scan_key(y), std::make_tuple(y.tp2_r, y.tp1_r));
+  });
+  return idx;
+}
+}  // namespace
 
 std::vector<VariantResult> run_sweep_gpu(const BarSeries& bars, const std::vector<Params>& grid,
                                          const SweepOptions& opt) {
@@ -100,12 +155,19 @@ std::vector<VariantResult> run_sweep_gpu(const BarSeries& bars, const std::vecto
     return run_sweep_gpu_ordered(bars, grid, opt);
   std::vector<uint32_t> order;
   std::vector<Params> sorted(grid.size());
+  std::vector<int> gbegin;
   {
     CpuSpan s(opt.timeline, "sort variants (host)");
-    order = divergence_order(grid);
+    order = opt.share_scan ? scan_group_order(grid) : divergence_order(grid);
     for (size_t i = 0; i < order.size(); ++i) sorted[i] = grid[order[i]];
+    if (opt.share_scan) {
+      for (size_t i = 0; i < sorted.size(); ++i)
+        if (i == 0 || scan_key(sorted[i]) != scan_key(sorted[i - 1])) gbegin.push_back(int(i));
+      gbegin.push_back(int(sorted.size()));
+    }
   }
-  const auto res_sorted = run_sweep_gpu_ordered(bars, sorted, opt);
+  const auto res_sorted =
+      run_sweep_gpu_ordered(bars, sorted, opt, opt.share_scan ? &gbegin : nullptr);
   CpuSpan s(opt.timeline, "unsort results (host)");
   std::vector<VariantResult> res(grid.size());
   for (size_t i = 0; i < order.size(); ++i) res[order[i]] = res_sorted[i];
@@ -114,7 +176,8 @@ std::vector<VariantResult> run_sweep_gpu(const BarSeries& bars, const std::vecto
 
 std::vector<VariantResult> run_sweep_gpu_ordered(const BarSeries& bars,
                                                  const std::vector<Params>& grid,
-                                                 const SweepOptions& opt) {
+                                                 const SweepOptions& opt,
+                                                 const std::vector<int>* gbegin) {
   const int S = int(bars.num_sessions());
   const int V = int(grid.size());
   const int split = int(oos_split(size_t(S), opt.oos_fraction));
@@ -145,7 +208,37 @@ std::vector<VariantResult> run_sweep_gpu_ordered(const BarSeries& bars,
   DeviceBuffer<VariantResult> d_res{size_t(V)};
   alloc_span.reset();
 
-  for (int v0 = 0; v0 < V; v0 += batch) {
+  if (gbegin && !naive) {
+    // Shared scan. Batches hold whole groups so a group's variants never straddle two.
+    const auto& gb = *gbegin;
+    const int G = int(gb.size()) - 1;
+    std::vector<int> vgroup(static_cast<size_t>(V));
+    for (int g = 0; g < G; ++g)
+      for (int v = gb[size_t(g)]; v < gb[size_t(g) + 1]; ++v) vgroup[size_t(v)] = g;
+    DeviceBuffer<int> d_gbegin(gb), d_vgroup(vgroup);
+    if (block > kMaxBlock) throw std::invalid_argument("block size above 1024");
+    for (int g0 = 0; g0 < G;) {
+      int g1 = g0 + 1;
+      while (g1 < G && gb[size_t(g1) + 1] - gb[size_t(g0)] <= batch) ++g1;
+      const int v0 = gb[size_t(g0)], vb = gb[size_t(g1)] - v0;
+      if (vb > batch) throw std::runtime_error("one scan group exceeds the result batch");
+      const double items = double(vb) * double(S);
+      dim3 grid_dim(unsigned((g1 - g0 + block - 1) / block), unsigned(S));
+      int t = timer.begin("sim_grouped", items * 4, items);
+      sim_grouped<<<grid_dim, block, size_t(block) * sizeof(Entry)>>>(
+          d_o.ptr, d_h.ptr, d_l.ptr, d_c.ptr, d_sess.ptr, d_grid.ptr, d_gbegin.ptr, d_vgroup.ptr,
+          g0, g1, v0, vb, d_r.ptr);
+      GBT_CHECK(hipGetLastError());
+      timer.end(t);
+      t = timer.begin("metrics (session-major)", items * 4 + vb * sizeof(VariantResult));
+      metrics_kernel<<<(vb + block - 1) / block, block>>>(d_r.ptr, vb, S, 1, size_t(vb), split,
+                                                         d_res.ptr + v0);
+      GBT_CHECK(hipGetLastError());
+      timer.end(t);
+      g0 = g1;
+    }
+  }
+  for (int v0 = 0; v0 < V && !(gbegin && !naive); v0 += batch) {
     const int vb = std::min(batch, V - v0);
     const double items = double(vb) * double(S);
     if (naive) {
